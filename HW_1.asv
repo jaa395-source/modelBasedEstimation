@@ -1,0 +1,19 @@
+%% Problem 1
+R_value = 5;
+C = 0.25;
+L = 1;
+
+% a
+A = [-1/L -R_value/L; 1/L 0];
+B = [1/L 0]';
+C = [0 1];
+D = 0;
+
+% b
+T = [0 1; 1/C 0];
+
+sys = ss(A, B, C, D);
+[eigenvalues, eigenvectors] = eig(A)
+
+% c
+obsv(sys)
