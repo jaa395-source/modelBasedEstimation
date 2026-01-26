@@ -46,11 +46,11 @@ end
 
 
 %% Problem 3
-p_running = [0.3, 0.7];
+p_raining = [0.3, 0.7];
 p_busy = [0.2, 0.5, 0.3];
 
-yes = p_running(1);
-no = p_running(2);
+yes = p_raining(1);
+no = p_raining(2);
 
 l = p_busy(1);
 m = p_busy(2);
@@ -65,14 +65,10 @@ probablity_running_any_day = yes*l*combo_running_yes(1) + yes*m*combo_running_ye
     no*m*combo_running_yes(5) + no*h*combo_running_yes(6)
 
 % b
-no = 1;
-probability_running_sunny_day = no*l*combo_running_yes(4) + ...
-    no*m*combo_running_yes(5) + no*h*combo_running_yes(6)
-no = p_running(2);
+probability_running_sunny_day = l*combo_running_yes(4) + ...
+    m*combo_running_yes(5) + h*combo_running_yes(6)
 
-l = 1;
-probability_running_not_busy_day = yes*l*combo_running_yes(1) + no*l*combo_running_yes(4)
-l = p_busy(1);
+probability_running_not_busy_day = yes*combo_running_yes(1) + no*combo_running_yes(4)
 
 if probability_running_sunny_day > probability_running_not_busy_day
     disp("More likely to run when its sunny than when he's not busy, weather is the deciding factor")
@@ -81,6 +77,5 @@ else
 end
 
 % c
-probability_of_busy_if_jogging = yes*h*combo_running_yes(3) + no*h*combo_running_yes(6)
-P(B,J) = P(J,B)*P(B)/P(A)
-(h*yes + h*no)*h/probablity_running_any_day
+%P(B,J) = P(J,B)*P(B)/P(A)
+probability_of_busy_if_jogging = (yes*combo_running_yes(3) + no*combo_running_yes(6))*h/probablity_running_any_day
