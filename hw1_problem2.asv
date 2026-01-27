@@ -46,7 +46,6 @@ figure;
 hold on;
 plot(Xe, Ye);
 plot(0,0, '+', 'LineWidth',4)
-ylabel("East/West Error (m)");
-xlabel("North/South Error (m)");
-legend("68% Confidence Elipse", "Center Point")
+ylabel("Latitude Error (km)");
+xlabel("Longitude Error (km)");
   
