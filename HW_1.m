@@ -13,7 +13,7 @@ D_matrix = 0;
 T = [0 1; 1/C_value 0];
 
 sys = ss(A_matrix, B_matrix, C_matrix, D_matrix);
-[eigenvalues, eigenvectors] = eig(A_matrix)
+[eigenvectors, eigenvalues] = eig(A_matrix)
 
 % c
 if rank(obsv(sys)) == size(obsv(sys), 1)
@@ -23,9 +23,17 @@ else
 end
 
 % d
-for column = 1:2
-    ic = eigenvalues(:, column);
-    [y, tOut, x] = initial(sys, ic);
+syms x y
+test = [x y];
+eig_col_to_remove = 2;
+eq1 = test*eigenvectors(:,eig_col_to_remove);
+x_value = 1;
+y_value = x_value*solve(eq1 == 0)/y;
+ic = double([x_value y_value]);
+
+for column = 1:1
+    %ic = eigenvectors(:, column);
+    [y, tOut, x] = initial(sys, ic');
     figure;
     hold on;
     yyaxis left
@@ -33,7 +41,7 @@ for column = 1:2
     yyaxis right
     plot(tOut, x(:,2));
     for i = 1:6
-        xline(pi/abs(min(min(eigenvectors)))*i)
+        xline(pi/abs(min(min(eigenvalues)))*i)
     end
     title("i and v_c vs time with sensor measurment points", 'IC = [' + string(ic(1)) + ", " + string(ic(2)) + "]");
     xlabel("Time (sec)");
