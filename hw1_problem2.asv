@@ -27,25 +27,43 @@ convert_LLerr2merr = pi/180*Re;
 
 C = [1 0 0; 0 1 0];
 x_ll = C*x_lla;
+x_ll_temp = [0 0]';
 
 cov_mat = C*P_llam;
 cov_mat = cov_mat(:,1:2);
 
-
-x_shift = sqrt(cov_mat(1,1));
-y_shift = sqrt(cov_mat(2,2));
-x_shift = 0;
-y_shift = 0;
-
-[Xe,Ye,U,S,th] = calculateEllipseCovMC(x_ll, cov_mat, 1, 36);
-x_shift = max(Xe) - (max(Xe) - min(Xe))/2;
-y_shift = -max(Ye) + (max(Ye) - min(Ye))/2;
-Xe = (Xe-x_shift);
-Ye = (Ye+y_shift);
+% 2b
+[Xe,Ye,U,S,th] = calculateEllipseCovMC(x_ll_temp, cov_mat, 1, 36);
 figure;
 hold on;
 plot(Xe, Ye);
+ylabel("East/West Error (m)");
+xlabel("North/South Error (m)");
 plot(0,0, '+', 'LineWidth',4)
-ylabel("Latitude Error (km)");
-xlabel("Longitude Error (km)");
+
+max_xe = max(Xe);
+pair_ye = Ye(find(Xe == max(Xe)));
+semi_major_axis_68 = (norm([max_xe pair_ye]))
+
+max_ye = max(Xe);
+pair_xe = Xe(find(Ye == max(Ye)));
+semi_minor_axis_68 = norm([max_ye pair_xe])
+legend("68% Confidence Elipse", "Center Point");
+
+%2c
+covariance_mat_for_95_percent = cov_mat*4;
+[Xe,Ye,U,S,th] = calculateEllipseCovMC(x_ll_temp, covariance_mat_for_95_percent, 1, 36);
+plot(Xe, Ye);
+max_xe = max(Xe);
+pair_ye = Ye(find(Xe == max(Xe)));
+semi_major_axis_95 = norm([max_xe pair_ye])
+
+max_ye = max(Xe);
+pair_xe = Xe(find(Ye == max(Ye)));
+semi_minor_axis_95 = norm([max_ye pair_xe])
+
+axis equal
+legend("68% Confidence Elipse", "Center Point", "95% Confidence Elipse");
+% maintain the same defintion for error and use the new covariance matrix,
+% which
   
