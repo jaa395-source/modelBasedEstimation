@@ -34,6 +34,21 @@ Sigr = 2E-4; %m^2/sec
 Tf=1000;dt=0.01;t=[0:dt:Tf]';
 r=sqrt(Sigr)*randn(length(t),1)/sqrt(dt);
 
+sys_CT = ss(A, Br, C, Dr);
+[z_CT, ~, x_CT] = lsim(sys_CT, r, t);
+Pz_CT = cov(z_CT)
+
+Px_CTan = lyap(A, Br*Sigr*Br');
+Pz_CTan = C*Px_CTan*C'
+
+percent_difference = ((Pz_CTan - Pz_CT)/(Pz_CT))*100
+
+% sys_DT = c2d(sys_CT, dt);
+% Fd = sys_DT.A;
+% Gd = sys_DT.B;
+% Hd = sys_DT.C;
+
+
 
 %% -------------------
 %% Part (b): find and simulate closed loop system
