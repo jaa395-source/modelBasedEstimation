@@ -98,6 +98,20 @@ pair_xe = Xe(find(Ye == max(Ye)));
 semi_minor_axis_68 = norm([max_ye pair_xe])
 legend("68% Confidence Elipse", "Center Point");
 
+% this confidence ellipse spans about 40 meters from end to end in both
+% north/south and east/west. 40 meters is about 4 times the length of the
+% 1st phd office. I would take that to mean this estimator is accurate
+% ~enough~ for me to get a solid estimate of where I am (for example it
+% probably would place me in the right building but wouldn't place me in
+% the right car) but if I'm using this estimator for directions it could
+% seriously fail me given that 40 meters is probably enough distance for it
+% to think I'm on a different road or path. And if I'm in a fast moving
+% vehicle, I could have traveled quite far in the time it takes the
+% estimator to correct itself. That said if the vehicle is quite large (a
+% boat or a plane) 40 meters is probably fine because that's smaller than
+% the vehicle and those vehicles don't travel in densely populated enough
+% areas for it to think I'm in a different plane/boat
+
 %2c
 covariance_mat_for_95_percent = cov_mat*4
 [Xe,Ye,U,S,th] = calculateEllipseCovMC(x_ll_temp, covariance_mat_for_95_percent, 1, 36);
@@ -160,3 +174,83 @@ end
 % c
 %P(B,J) = P(J,B)*P(B)/P(A)
 probability_of_busy_if_jogging = (yes*combo_running_yes(3) + no*combo_running_yes(6))*h/probablity_running_any_day
+
+%% 4
+
+%constants
+M=300;    %car mass (kg)
+m=50;     %wheel mass (kg)
+K1=3000;  %spring constant (N/m)
+K2=30000; %spring constant (N/m)
+C1=600;   %damping constant (Nsec/m)
+
+% Set up open loop model, including r,u as inputs and z as output
+%
+% xdot = A*x + Bu*u + Br*r
+%    z = C*x + Du*u + Dr*r
+%
+
+%State Space system matrices
+A=[0  0  1  0; 
+   0  0  0  1 ; 
+   -K1/M K1/M -C1/M C1/M ;
+   K1/m -(K1+K2)/m C1/m -C1/m];
+Bu=[0; 0; 1/M; -1/m];  %The actuator control as an input u(t)
+Br=[0; 0; 0; K2/m];    %The bumpy road as an input r(t)
+C=[1 0 0 0];Du=0;Dr=0; %The driver position as the output
+% Bumpy Road white noise disturbance intensity
+Sigr = 2E-4; %m^2/sec
+
+%% -------------------
+%% Part (4a): simulate open loop system
+Tf=1000;dt=0.01;t=[0:dt:Tf]';
+r=sqrt(Sigr)*randn(length(t),1)/sqrt(dt);
+
+sys_CT = ss(A, Br, C, Dr);
+[ol_z_CT, ~, ol_x_CT] = lsim(sys_CT, r, t);
+ol_Pz_CT = cov(ol_z_CT)
+
+Px_CTan = lyap(A, Br*Sigr*Br');
+ol_Pz_CTan = C*Px_CTan*C'
+
+percent_difference = ((ol_Pz_CTan - ol_Pz_CT)/(ol_Pz_CT))*100
+
+%% -------------------
+%% Part (4b): find and simulate closed loop system
+% These lines find the closed loop state feedback controller K,
+% where the form of the controller is: u = -K*x
+Rzz=1;Ruu=2E-9; 
+[K,S,E]=lqry(ss(A,Bu,C,Du),Rzz,Ruu);
+%  
+%Simulate the closed loop system for the bumpy road
+cl_sys = ss(A-Bu*K, Br, C, Dr);
+[cl_z_CT, ~, cl_x_CT] = lsim(cl_sys, r, t);
+cl_Pz_CT = cov(cl_z_CT)
+
+Px_CTan = lyap(A-Bu*K, Br*Sigr*Br');
+cl_Pz_CTan = C*Px_CTan*C'
+
+cl_percent_difference = ((cl_Pz_CTan - cl_Pz_CT)/(cl_Pz_CT))*100
+
+
+%% -------------------
+%% Part (4c): plot open and closed loop response z(t), analyze
+figure;
+hold on;
+plot(t, ol_z_CT, t, cl_z_CT);
+title("Z value vs Time");
+xlabel("Time (sec)");
+ylabel("Performance");
+legend("Open Loop Data", "Closed Loop Data");
+
+ol_stdv = std(ol_z_CT);
+cl_stdv = std(cl_z_CT);
+
+limit_meters = .03;
+p = normcdf([-limit_meters/ol_stdv limit_meters/ol_stdv]);
+probablity_of_more_than_3_cm_ol_percent = (1 - (p(2) - p(1)))*100
+
+p = normcdf([-limit_meters/cl_stdv limit_meters/cl_stdv]);
+probablity_of_more_than_3_cm_cl_percent = (1 - (p(2) - p(1)))
+
+%% Part (4d): analyze the control effort u(t)
