@@ -35,33 +35,51 @@ Tf=1000;dt=0.01;t=[0:dt:Tf]';
 r=sqrt(Sigr)*randn(length(t),1)/sqrt(dt);
 
 sys_CT = ss(A, Br, C, Dr);
-[z_CT, ~, x_CT] = lsim(sys_CT, r, t);
-Pz_CT = cov(z_CT)
+[ol_z_CT, ~, ol_x_CT] = lsim(sys_CT, r, t);
+ol_Pz_CT = cov(ol_z_CT)
 
 Px_CTan = lyap(A, Br*Sigr*Br');
-Pz_CTan = C*Px_CTan*C'
+ol_Pz_CTan = C*Px_CTan*C'
 
-percent_difference = ((Pz_CTan - Pz_CT)/(Pz_CT))*100
-
-% sys_DT = c2d(sys_CT, dt);
-% Fd = sys_DT.A;
-% Gd = sys_DT.B;
-% Hd = sys_DT.C;
-
-
+percent_difference = ((ol_Pz_CTan - ol_Pz_CT)/(ol_Pz_CT))*100
 
 %% -------------------
 %% Part (b): find and simulate closed loop system
 % These lines find the closed loop state feedback controller K,
 % where the form of the controller is: u = -K*x
-Rzz=1;Ruu=2E-9;
+Rzz=1;Ruu=2E-9; 
 [K,S,E]=lqry(ss(A,Bu,C,Du),Rzz,Ruu);
-%
+%  
 %Simulate the closed loop system for the bumpy road
+cl_sys = ss(A-Bu*K, Br, C, Dr);
+[cl_z_CT, ~, cl_x_CT] = lsim(cl_sys, r, t);
+cl_Pz_CT = cov(cl_z_CT)
+
+Px_CTan = lyap(A-Bu*K, Br*Sigr*Br');
+cl_Pz_CTan = C*Px_CTan*C'
+
+cl_percent_difference = ((cl_Pz_CTan - cl_Pz_CT)/(cl_Pz_CT))*100
 
 
 %% -------------------
 %% Part (c): plot open and closed loop response z(t), analyze
+figure;
+hold on;
+plot(t, ol_z_CT, t, cl_z_CT);
+title("Z value vs Time");
+xlabel("Time (sec)");
+ylabel("Performance");
+legend("Open Loop Data", "Closed Loop Data");
+
+ol_stdv = std(ol_z_CT);
+cl_stdv = std(cl_z_CT);
+
+limit_meters = .03;
+p = normcdf([-limit_meters/ol_stdv limit_meters/ol_stdv]);
+probablity_of_more_than_3_cm_ol_percent = (1 - (p(2) - p(1)))*100
+
+p = normcdf([-limit_meters/cl_stdv limit_meters/cl_stdv]);
+probablity_of_more_than_3_cm_cl_percent = (1 - (p(2) - p(1)))*100
 
 
 
