@@ -215,6 +215,22 @@ ol_Pz_CTan = C*Px_CTan*C'
 
 percent_difference = ((ol_Pz_CTan - ol_Pz_CT)/(ol_Pz_CT))*100
 
+% both of these approaches are attempting to find the steady state value
+% for the covariance. however the lyapunov equation is one that explicitly
+% solves for that steady state value. In contrast, the time simulation
+% approach seeks to simulate data for enough time that you get an
+% understanding of what the covariance will tend to in steady state however
+% you would only have enough data to properly find that value if you
+% simulated for infinite time. it's also worth noting that in both the
+% analytical solution and the time simulation, we use a discrete time
+% approximation for the continuous time white noise, as such that
+% approximation is only truly accurate when dt (the time step) equals zero.
+% Given that this approximation is used in both solution approaches it
+% doesn't seem fair to point that out as a reason for the different answers
+% but it is worth noting to acknowledge its contribution to an answer that
+% is, itself, an increasingly high fidelity (as dt decreases) approximation 
+% of the real answer
+
 %% -------------------
 %% Part (4b): find and simulate closed loop system
 % These lines find the closed loop state feedback controller K,

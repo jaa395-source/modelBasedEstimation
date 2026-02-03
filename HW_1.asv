@@ -101,7 +101,16 @@ legend("68% Confidence Elipse", "Center Point");
 % this confidence ellipse spans about 40 meters from end to end in both
 % north/south and east/west. 40 meters is about 4 times the length of the
 % 1st phd office. I would take that to mean this estimator is accurate
-% ~enough~ for me to get a solid estimate f
+% ~enough~ for me to get a solid estimate of where I am (for example it
+% probably would place me in the right building but wouldn't place me in
+% the right car) but if I'm using this estimator for directions it could
+% seriously fail me given that 40 meters is probably enough distance for it
+% to think I'm on a different road or path. And if I'm in a fast moving
+% vehicle, I could have traveled quite far in the time it takes the
+% estimator to correct itself. That said if the vehicle is quite large (a
+% boat or a plane) 40 meters is probably fine because that's smaller than
+% the vehicle and those vehicles don't travel in densely populated enough
+% areas for it to think I'm in a different plane/boat
 
 %2c
 covariance_mat_for_95_percent = cov_mat*4
@@ -205,6 +214,9 @@ Px_CTan = lyap(A, Br*Sigr*Br');
 ol_Pz_CTan = C*Px_CTan*C'
 
 percent_difference = ((ol_Pz_CTan - ol_Pz_CT)/(ol_Pz_CT))*100
+
+% both of these approaches are attempting to find the steady state value
+% for the covariance. however the lyapunov equation is one that ex
 
 %% -------------------
 %% Part (4b): find and simulate closed loop system
