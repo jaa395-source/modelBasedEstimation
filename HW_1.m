@@ -203,6 +203,7 @@ Sigr = 2E-4; %m^2/sec
 
 %% -------------------
 %% Part (4a): simulate open loop system
+rng("default");
 Tf=1000;dt=0.01;t=[0:dt:Tf]';
 r=sqrt(Sigr)*randn(length(t),1)/sqrt(dt);
 
@@ -235,6 +236,7 @@ percent_difference = ((ol_Pz_CTan - ol_Pz_CT)/(ol_Pz_CT))*100
 %% Part (4b): find and simulate closed loop system
 % These lines find the closed loop state feedback controller K,
 % where the form of the controller is: u = -K*x
+rng("default");
 Rzz=1;Ruu=2E-9; 
 [K,S,E]=lqry(ss(A,Bu,C,Du),Rzz,Ruu);
 %  
@@ -270,3 +272,8 @@ p = normcdf([-limit_meters/cl_stdv limit_meters/cl_stdv]);
 probablity_of_more_than_3_cm_cl_percent = (1 - (p(2) - p(1)))
 
 %% Part (4d): analyze the control effort u(t)
+u_cl = -K*cl_x_CT';
+sim_cov_u = cov(u_cl)
+lyap_cov_u = -K*Sigr*-K'
+
+(lyap_cov_u-sim_cov_u)*100/sim_cov_u
