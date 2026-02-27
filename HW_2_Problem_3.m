@@ -32,7 +32,7 @@ while percent_certainties(2) < 0.99
 
     number_of_measurements = number_of_measurements + 1;
     ML_function_variable_measurements = p_matrix(:,meas_number).^number_of_measurements;
-    percent_certainties = ML_function_variable_measurements/norm(ML_function_variable_measurements);
+    percent_certainties = ML_function_variable_measurements/sum(ML_function_variable_measurements);
 
 end
 
