@@ -65,7 +65,29 @@ F=DTsys_A.A;G=DTsys_A.B;H=H_A;
 nx=length(F);
 Q=Q_A;R=R_A;z=z_A;
 
-%%YOUR CODE HERE
+P0_val = 1;
+X0_val = 1;
+P0 = diag(P0_val*ones(nx,1));
+
+xhatp = zeros(nx,nk);xhatp(:,1) = x0_A;
+xhatu = zeros(nx,nk);xhatu(:,1) = x0_A;
+Pp = zeros(nx,nx,nk);Pp(:,:,1) = P0;
+Pu = zeros(nx,nx,nk);Pu(:,:,1) = P0;
+n = nk;
+
+for k=1:(n-1)
+    % Preidct
+    xhatp(:,k+1) = F*xhatu(:,k);
+    Pp(:,:,k+1) = F*Pu(:,:,k)*F' + G*Q*G';
+
+    % Kalman Gain
+    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+
+    % Update
+    xhatu(:,k+1) = xhatp(:,k+1) +K*(z(:,k+1) - H*xhatp(:,k+1));
+    Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*R*K';
+end
+
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
 %assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
