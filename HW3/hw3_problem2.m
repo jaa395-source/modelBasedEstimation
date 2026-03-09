@@ -345,7 +345,31 @@ Q=blkdiag(Q_A,Q_B);
 R=blkdiag(R_A,R_B);
 Z=[z_A;z_B];
 
-%%YOUR CODE HERE
+P0_val = 1;
+X0_val = 1;
+P0 = diag([cov(x_A(1,:)), cov(x_A(2,:)), cov(x_A(3,:)), cov(x_A(4,:))]);
+P0 = cov(x_A');
+P0 = diag([100 100 100 100 100 100 100 100]);
+
+xhatp = zeros(nX,nk);xhatp(:,1) = [x0_A;x0_B];
+xhatu = zeros(nX,nk);xhatu(:,1) = [x0_A;x0_B];
+Pp = zeros(nX,nX,nk);Pp(:,:,1) = P0;
+Pu = zeros(nX,nX,nk);Pu(:,:,1) = P0;
+n = nk;
+
+for k=1:(n-1)
+    % Preidct
+    xhatp(:,k+1) = F*xhatu(:,k);
+    Pp(:,:,k+1) = F*Pu(:,:,k)*F' + G*Q*G';
+
+    % Kalman Gain
+    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+
+    % Update
+    xhatu(:,k+1) = xhatp(:,k+1) +K*(Z(:,k+1) - H*xhatp(:,k+1));
+    Pu(:,:,k+1) = (eye(nX) - K*H)*Pp(:,:,k+1)*(eye(nX) - K*H)' + K*R*K';
+end
+
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
 %assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
@@ -392,7 +416,32 @@ Q=blkdiag(Q_A,Q_B);
 R=Rr;
 Z=Zr;
 
-%%YOUR CODE HERE
+
+P0_val = 1;
+X0_val = 1;
+P0 = diag([cov(x_A(1,:)), cov(x_A(2,:)), cov(x_A(3,:)), cov(x_A(4,:))]);
+P0 = cov(x_A');
+P0 = diag([100 100 100 100 100 100 100 100]);
+
+xhatp = zeros(nX,nk);xhatp(:,1) = [x0_A;x0_B];
+xhatu = zeros(nX,nk);xhatu(:,1) = [x0_A;x0_B];
+Pp = zeros(nX,nX,nk);Pp(:,:,1) = P0;
+Pu = zeros(nX,nX,nk);Pu(:,:,1) = P0;
+n = nk;
+
+for k=1:(n-1)
+    % Preidct
+    xhatp(:,k+1) = F*xhatu(:,k);
+    Pp(:,:,k+1) = F*Pu(:,:,k)*F' + G*Q*G';
+
+    % Kalman Gain
+    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+
+    % Update
+    xhatu(:,k+1) = xhatp(:,k+1) +K*(Z(:,k+1) - H*xhatp(:,k+1));
+    Pu(:,:,k+1) = (eye(nX) - K*H)*Pp(:,:,k+1)*(eye(nX) - K*H)' + K*R*K';
+end
+
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
 %assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
@@ -404,7 +453,7 @@ ylabel('North error estimate {\it{e_N(t)}}');
 nexttile;
 plot_estimator(tvec,xhatu(iy,:),Pu(iy,iy,:),x_A(iy,:),'error',z_A(2,:));
 ylabel('East error estimate {\it{e_E(t)}}');
-title(ti(10),'(e): Joint KF with Relative Range: aircraft A errors','fontweight','bold');
+title(ti(9),'(e): Joint KF with Relative Range: aircraft A errors','fontweight','bold');
 figs(10)=figure;
 ti(10)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
