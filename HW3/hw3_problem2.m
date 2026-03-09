@@ -9,33 +9,33 @@
 %
 clear all; close all
 MAE6760startup; %can adjust font size, figure size at the bottom of this script
-global MCcolors; %define colors as global with access 
+global MCcolors; %define colors as global with access
 rng(101);
- 
-%% Define system model (CT and DT) for aircraft A 
+
+%% Define system model (CT and DT) for aircraft A
 %continuous time model for aircraft A
 Omega_A = 0.045; %turn velocity for A in rad/s
 %state vector: [East pos, East vel, North pos, North vel]
 nx=4;
-A_A=[0 1 0 0;0 0 0 -Omega_A;0 0 0 1;0 Omega_A 0 0]; 
+A_A=[0 1 0 0;0 0 0 -Omega_A;0 0 0 1;0 Omega_A 0 0];
 ix=1;iy=3; %indices of the 2D position
 %input forces (East, North)
-B_A=[0 0;1 0;0 0;0 1]; 
+B_A=[0 0;1 0;0 0;0 1];
 nw=2;
-%discrete time model 
+%discrete time model
 dt = 0.5; %sec
 [F_A,G_A]=c2d(A_A,B_A,dt);
 % sensor output models: 2D position states
-H_A = [1 0 0 0; 
-       0 0 1 0];
+H_A = [1 0 0 0;
+    0 0 1 0];
 nz=2;
 % build discrete time model for aircraft A
-DTsys_A = ss(F_A,G_A,H_A,zeros(nz,nw),dt); 
+DTsys_A = ss(F_A,G_A,H_A,zeros(nz,nw),dt);
 %model directional wind disturbances
-Q_A = 10*[2.0 0.05;    
-         0.05 0.5];
+Q_A = 10*[2.0 0.05;
+    0.05 0.5];
 
-%% simulate aircraft A with process noise and plot 
+%% simulate aircraft A with process noise and plot
 tvec = 0:dt:100;nk=length(tvec);
 x0_A = [0,85*cos(pi/4),0,-85*sin(pi/4)]';
 w_A = sqrtm(Q_A)*randn(nw,nk);
@@ -43,8 +43,8 @@ w_A = sqrtm(Q_A)*randn(nw,nk);
 z_A_clean = H_A*x_A;
 %
 %simulate measurements for aircraft A from a tracking station
-R_A = [20 0.05; 
-      0.05 20];
+R_A = [20 0.05;
+    0.05 20];
 v_A = sqrtm(R_A)*randn(nz,nk);
 z_A = H_A*x_A+v_A;
 
@@ -67,7 +67,9 @@ Q=Q_A;R=R_A;z=z_A;
 
 P0_val = 1;
 X0_val = 1;
-P0 = diag(P0_val*ones(nx,1));
+P0 = diag([cov(x_A(1,:)), cov(x_A(2,:)), cov(x_A(3,:)), cov(x_A(4,:))]);
+P0 = cov(x_A');
+P0 = diag([100 100 100 100]);
 
 xhatp = zeros(nx,nk);xhatp(:,1) = x0_A;
 xhatu = zeros(nx,nk);xhatu(:,1) = x0_A;
@@ -90,7 +92,7 @@ end
 
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
-%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
+%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
 %
 figs(2)=figure;
 ti(2)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
@@ -111,26 +113,53 @@ title(ti(2),'(a): Baseline Kalman Filter for aircraft A','fontweight','bold');
 %
 %variables to generate for display/plots:
 % Nrej: number of measurement rejections (subset of total nk)
-% Trej: times [tvec(k+1)] when msmt is rejected 
+% Trej: times [tvec(k+1)] when msmt is rejected
 % Erej: error [z(:,k+1)-H*x_A(:,k+1)] when msmt is rejected
 
 %msmt gating parameters
 Pgate = 0.95;alpha = 1-Pgate;
 Lam0  = chi2inv(Pgate, nz);
-Nrej=0;Irej=[];
+Nrej=0;Trej=[];Erej=[];
 
 F=DTsys_A.A;G=DTsys_A.B;H=H_A;
 nx=length(F);
 Q=Q_A;R=R_A;z=z_A;
 
-%%YOUR CODE HERE
+n = nx;
+xhat1p=x0_A; P1p(1:n,1:n,1)=P0;
+xhat1u=x0_A; P1u(1:n,1:n,1)=P0;
+
+for k=1:(nk-1)
+
+    xhat1p(:,k+1) = F*xhat1u(:,k);
+    P1p(1:n,1:n,k+1) = F*P1u(1:n,1:n,k)*F' + G*Q*G';
+
+    inn = (z(:, k+1) - H*xhat1p(:, k+1));
+    S = H*P1p(1:n, 1:n, k+1)*H' + R;
+
+    K = P1p(1:n,1:n,k+1)*H'*inv(S);
+
+    Lam = inn'*inv(S)*inn;
+
+    if Lam>Lam0
+        xhat1u(:,k+1) = xhat1p(:,k+1);
+        P1u(1:n,1:n,k+1) = P1p(1:n,1:n,k+1);
+        Nrej = Nrej + 1;
+        Trej(length(Trej) + 1) = tvec(k+1);
+        Erej(:,size(Erej,2) + 1) = z(:,k+1)-H*x_A(:,k+1);
+    else
+        xhat1u(:,k+1) = xhat1p(:,k+1) + K*inn;
+        P1u(1:n,1:n,k+1) = (eye(n)-K*H)*P1p(1:n,1:n,k+1)*(eye(n)-K*H)' + K*R*K';
+    end
+
+end
 
 %uncomment lines below to output the percent of msmts rejected
-% disp('(b) percent of msmts rejected:');
-% disp(Nrej/nk*100)
+disp('(b) percent of msmts rejected:');
+disp(Nrej/nk*100)
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
-%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
+%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
 figs(3)=figure;
 ti(3)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
@@ -138,20 +167,20 @@ plot_estimator(tvec,xhatu(ix,:),Pu(ix,ix,:),x_A(ix,:),'error',z_A(1,:));
 ylabel('North error estimate {\it{e_N(t)}}');
 hold on
 %uncomment line below to add msmt rejections to the plot
-%plot(Trej,Erej(1,:),'mo','DisplayName','Msmt Rejection');
+plot(Trej,Erej(1,:),'mo','DisplayName','Msmt Rejection');
 hold off;
 nexttile;
 plot_estimator(tvec,xhatu(iy,:),Pu(iy,iy,:),x_A(iy,:),'error',z_A(2,:));
 ylabel('East error estimate {\it{e_E(t)}}');
 hold on
 %uncomment line below to add msmt rejections to the plot
-%plot(Trej,Erej(2,:),'mo','DisplayName','Msmt Rejection');
+plot(Trej,Erej(2,:),'mo','DisplayName','Msmt Rejection');
 hold off;
 title(ti(3),'(b): Kalman Filter with 95% msmt gating for aircraft A','fontweight','bold');
 
 
 %% Part c): Estimate Process Noise Covariance Q to make KF consistent
-%goal: use hypothesis tests to tune process noise covariance Q 
+%goal: use hypothesis tests to tune process noise covariance Q
 %
 %use model DTsys_A for this problem
 %load simulated measurements from tile (these are for aircraft A, but labeled z_c for Part c
@@ -162,15 +191,15 @@ title(ti(3),'(b): Kalman Filter with 95% msmt gating for aircraft A','fontweight
 % Lam: innovations test statistic lambda (1 x nk)
 % LamF: Kalman Filter test statistic lambda (1 x nk)
 % Nrej: number of measurement rejections (subset of total nk)
-% Trej: times [tvec(k+1)] when msmt is rejected 
+% Trej: times [tvec(k+1)] when msmt is rejected
 % Erej: error [z(:,k+1)-H*x_c(:,k+1)] when msmt is rejected
 % NFrej: number of times the filter is inconsistent (subset of total nk)
-% TFrej: times [tvec(k+1)] when the filter is inconsistent 
+% TFrej: times [tvec(k+1)] when the filter is inconsistent
 % EFrej: error [z(:,k+1)-H*x_c(:,k+1)] when the filter is inconsistent
 %
-%load measurement vector z_c and state x_c 
+%load measurement vector z_c and state x_c
 % for aircraft A, simulated with different Q
-load ACdata 
+load ACdata
 %
 
 F=DTsys_A.A;G=DTsys_A.B;H=H_A;
@@ -186,21 +215,55 @@ PF = 0.95;alpha = 1-PF;
 win=10;%time window
 Blow=chi2inv(alpha/2,10*nz)/win;  %low filter threshold
 Bhigh=chi2inv(1-alpha/2,10*nz)/win;  %high filter threshold
-Lam=zeros(nk,1);
-LamF=zeros(nk,1);
+Lam=zeros(nk,1)';
+LamF=zeros(nk,1)';
+NFrej=0; TFrej=[]; EFrej=[];
 
-%%YOUR CODE HERE
+n = nx;
+xhat1p=x0_A; P1p(1:n,1:n,1)=P0;
+xhat1u=x0_A; P1u(1:n,1:n,1)=P0;
+
+for k=1:(nk-1)
+
+    xhat1p(:,k+1) = F*xhat1u(:,k);
+    P1p(1:n,1:n,k+1) = F*P1u(1:n,1:n,k)*F' + G*Q*G';
+
+    inn = (z(:, k+1) - H*xhat1p(:, k+1));
+    S = H*P1p(1:n, 1:n, k+1)*H' + R;
+
+    K = P1p(1:n,1:n,k+1)*H'*inv(S);
+
+    Lam(1,k+1) = inn'*inv(S)*inn;
+
+    if Lam(1,k+1)>Lam0
+        Nrej = Nrej + 1;
+        Trej(length(Trej) + 1) = tvec(k+1);
+        Erej(:,size(Erej,2) + 1) = z(:,k+1)-H*x_c(:,k+1);
+    end
+    xhat1u(:,k+1) = xhat1p(:,k+1) + K*inn;
+    P1u(1:n,1:n,k+1) = (eye(n)-K*H)*P1p(1:n,1:n,k+1)*(eye(n)-K*H)' + K*R*K';
+
+    if k>=win
+        LamF(1,k+1) = mean(Lam(k-win+2:k+1));
+    end
+    if (LamF(1,k+1) < Blow) | (LamF(1,k+1)>Bhigh)
+        NFrej = NFrej + 1;
+        TFrej(length(TFrej) + 1) = tvec(k+1);
+        EFrej(:,size(EFrej,2) + 1) = z(:,k+1)-H*x_c(:,k+1);
+    end
+
+end
 
 %
 %uncomment lines below to output the percent of msmts rejected
-% disp('(c) percent of msmts rejected:');
-% disp(Nrej/nk*100)
+disp('(c) percent of msmts rejected:');
+disp(Nrej/nk*100)
 %uncomment lines below to output the percent of time filter is inconsistent
-% disp('(c) percent of time filter is inconsistent:');
-% disp(NFrej/nk*100)
+disp('(c) percent of time filter is inconsistent:');
+disp(NFrej/nk*100)
 %
 %Generate plot of East and North position error estimates and 2-sigma bounds
-%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
+%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
 figs(4)=figure;
 ti(4)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
@@ -238,30 +301,30 @@ legend('inn test statistic \lambda','KF test statistic \lambda_{10}^{KF}','lower
 %continuous time model for aircraft B
 Omega_B = -0.045; %turn velocity for V in rad/s
 %state vector: [East pos, East vel, North pos, North vel]
-A_B=[0 1 0 0;0 0 0 -Omega_B;0 0 0 1;0 Omega_B 0 0]; 
+A_B=[0 1 0 0;0 0 0 -Omega_B;0 0 0 1;0 Omega_B 0 0];
 %input forces (East, North)
-B_B=[0 0;1 0;0 0;0 1]; 
-%discretize 
+B_B=[0 0;1 0;0 0;0 1];
+%discretize
 [F_B,G_B]=c2d(A_B,B_B,dt);
 % sensor output models: 2D position states
-H_B = [1 0 0 0; 
-       0 0 1 0];
+H_B = [1 0 0 0;
+    0 0 1 0];
 %model directional wind disturbances
-Q_B = 10*[2.0 0.05;    
-         0.05 0.5];
+Q_B = 10*[2.0 0.05;
+    0.05 0.5];
 %
 % build discrete time model for AC A
-DTsys_B = ss(F_B,G_B,H_B,zeros(nz,nw),dt); 
+DTsys_B = ss(F_B,G_B,H_B,zeros(nz,nw),dt);
 
-%simulate aircraft B with process noise 
+%simulate aircraft B with process noise
 x0_B = [4000,85*cos(pi/4),3200,-85*sin(pi/4)]';
 w_B = sqrtm(Q_B)*randn(nw,nk);
 [~,~,x_B] = lsim(DTsys_B,w_B,tvec,x0_B);x_B=x_B'; %make into row vector
 z_B_clean = H_B * x_B;
 
 %simulate measurements for aircraft A from a tracking station
-R_B = [20 0.05; 
-      0.05 20];
+R_B = [20 0.05;
+    0.05 20];
 v_B = sqrtm(R_B)*randn(nz,nk);
 z_B = z_B_clean+v_B;
 %
@@ -285,7 +348,7 @@ Z=[z_A;z_B];
 %%YOUR CODE HERE
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
-%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
+%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
 figs(7)=figure;
 ti(7)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
@@ -313,10 +376,10 @@ title(ti(8),'(d): Joint Kalman Filter: aircraft B errors','fontweight','bold');
 %use both models DTsys_A,DTsys_B for this problem
 %use measurements Zr for this problem
 %
-Rr = [10 0.15; 
-      0.15 10];
+Rr = [10 0.15;
+    0.15 10];
 Hr = [1 0 0 0 -1 0  0 0;
-         0 0 1 0  0 0 -1 0]; 
+    0 0 1 0  0 0 -1 0];
 vr = sqrtm(Rr)*randn(2,nk);
 Zr = [x_A(1,:)-x_B(1,:);x_A(3,:)-x_B(3,:)]+vr;
 
@@ -332,7 +395,7 @@ Z=Zr;
 %%YOUR CODE HERE
 
 %Generate plot of East and North position error estimates and 2-sigma bounds
-%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk) 
+%assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), xtrue is (nx x nk)
 figs(9)=figure;
 ti(9)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
@@ -368,7 +431,7 @@ hold off
 ylabel('North');xlabel('East');
 grid;
 %
-if nargin<2, %only aircraft A  
+if nargin<2, %only aircraft A
     legend([p1],'aircraft A');
 else, %overlay aircraft B
     hold on;
@@ -385,7 +448,7 @@ end
 function MAE6760startup(font_size);
 %
 % define colors for plotting
-global MCcolors; %define colors as global with access 
+global MCcolors; %define colors as global with access
 MCcolors.red=[200,0,0]/255;
 MCcolors.blue=[4,51,255]/255;
 MCcolors.purple=[147,23,255]/255;
