@@ -80,9 +80,15 @@ title(ti(1),'simulated response: 1st and 5th masses','fontweight','bold');
 F=DTsys.A;G=DTsys.B;Q=Qsim;
 H=DTsys.C(1,:);
 R=Rq1;z=z_q1;
-P0_val = 1;
-X0_val = 1;
-x0(9) = X0_val; P0 = diag(P0_val*ones(nx,1));
+
+P0_vals = [];
+for i = 1:nx
+    P0_vals(i) = cov(x_no_w(i,:));
+end
+
+x0(1) = 0;
+x0(9) = 1; 
+P0 = diag(P0_vals);
 %Generate plot of position error estimates for the 1st and 5th masses and 2-sigma bounds
 %assumes t is (1 x nk), xhatu is (nx x nk), Pu is (nx x nx x nk), x_true is (nx x nk) 
 %measurement of position of 5th mass
@@ -116,7 +122,7 @@ nexttile;
 plot_estimator(t,xhatu(i2,:),Pu(i2,i2,:),x_true(i2,:),'error');
 ylabel('error position q5');
 ylim([-2 2]);
-title(ti(2),'(a): measurement z_{q1}, P0 = ' + string(P0_val) + ', X0 = ' + string(X0_val),'fontweight','bold');
+title(ti(2),'(a): measurement z_{q1}','fontweight','bold');
 
 % KF using z_q5
 F=DTsys.A;G=DTsys.B;Q=Qsim;
@@ -155,7 +161,7 @@ nexttile;
 plot_estimator(t,xhatu(i2,:),Pu(i2,i2,:),x_true(i2,:),'error',z);
 ylabel('error position q5');
 ylim([-0.3 0.3]);
-title(ti(3),'(a): measurement z_{q5}, P0 = ' + string(P0_val) + ', X0 = ' + string(X0_val),'fontweight','bold');
+title(ti(3),'(a): measurement z_{q5}','fontweight','bold');
 
 
 %% Part (b): predicted vs updated covariance using z_q5
@@ -198,16 +204,15 @@ R=Rq5;z=z_q5;
 
 Pz_sim = (Pu(:,:,end));
 [Pz_ss,K_ss,L_ss] = idare(F',H',G*Q*G',R);
-%Pz_ss = diag(Pz_ss);
 
 
 %simulated measurement covariance from the KF at the final time:
 disp('The simulated measurement covariance at the final time is:')
-disp([Pz_sim]);
+disp([Pz_sim(5,5)]);
 
 %steady state measurement covariance:
 disp('The steady state measurement covariance is:')
-disp([Pz_ss]);
+disp([Pz_ss(5,5)]);
 
 
 %% Part (d): Kalman Filter initialized with steady state error covariance
@@ -228,7 +233,6 @@ for k=1:(n-1)
     Pp(:,:,k+1) = F*Pu(:,:,k)*F' + G*Q*G';
 
     % Kalman Gain
-    %K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
     K = K_ss';
 
     % Update
