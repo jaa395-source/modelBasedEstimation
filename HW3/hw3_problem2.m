@@ -65,11 +65,13 @@ F=DTsys_A.A;G=DTsys_A.B;H=H_A;
 nx=length(F);
 Q=Q_A;R=R_A;z=z_A;
 
-P0_val = 1;
-X0_val = 1;
-P0 = diag([cov(x_A(1,:)), cov(x_A(2,:)), cov(x_A(3,:)), cov(x_A(4,:))]);
-P0 = cov(x_A');
-P0 = diag([100 100 100 100]);
+P0_vals = [];
+for i = 1:nx
+    P0_vals(i) = cov(x_A(i,:));
+end
+%P0_vals = [100 10 100 10];
+P0_vals = [20 100 20 100];
+P0 = diag(P0_vals);
 
 xhatp = zeros(nx,nk);xhatp(:,1) = x0_A;
 xhatu = zeros(nx,nk);xhatu(:,1) = x0_A;
@@ -202,9 +204,10 @@ title(ti(3),'(b): Kalman Filter with 95% msmt gating for aircraft A','fontweight
 load ACdata
 %
 
+Q_scale = 14;
 F=DTsys_A.A;G=DTsys_A.B;H=H_A;
 nx=length(F);
-Q=Q_A;R=R_A;z=z_c;
+Q=Q_scale*Q_A;R=R_A;z=z_c;
 
 %msmt gating parameters
 Pgate = 0.95;alpha = 1-Pgate;
@@ -218,6 +221,7 @@ Bhigh=chi2inv(1-alpha/2,10*nz)/win;  %high filter threshold
 Lam=zeros(nk,1)';
 LamF=zeros(nk,1)';
 NFrej=0; TFrej=[]; EFrej=[];
+Nrej=0;  Trej=[];  Erej=[];
 
 n = nx;
 xhat1p=x0_A; P1p(1:n,1:n,1)=P0;
@@ -246,7 +250,7 @@ for k=1:(nk-1)
     if k>=win
         LamF(1,k+1) = mean(Lam(k-win+2:k+1));
     end
-    if (LamF(1,k+1) < Blow) | (LamF(1,k+1)>Bhigh)
+    if (LamF(1,k+1) < Blow) | (LamF(k+1)>Bhigh)
         NFrej = NFrej + 1;
         TFrej(length(TFrej) + 1) = tvec(k+1);
         EFrej(:,size(EFrej,2) + 1) = z(:,k+1)-H*x_c(:,k+1);
@@ -267,14 +271,14 @@ disp(NFrej/nk*100)
 figs(4)=figure;
 ti(4)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
-plot_estimator(tvec,xhatu(ix,:),Pu(ix,ix,:),x_c(ix,:),'error',z_c(1,:));
+plot_estimator(tvec,xhat1u(ix,:),P1u(ix,ix,:),x_c(ix,:),'error',z_c(1,:));
 ylabel('North error estimate {\it{e_N(t)}}');
 hold on
 %uncomment the line below to add msmt rejections to the plot
 plot(Trej,Erej(1,:),'mo','DisplayName','Msmt Rejection');
 hold off;
 nexttile;
-plot_estimator(tvec,xhatu(iy,:),Pu(iy,iy,:),x_c(iy,:),'error',z_c(2,:));
+plot_estimator(tvec,xhat1u(iy,:),P1u(iy,iy,:),x_c(iy,:),'error',z_c(2,:));
 ylabel('East error estimate {\it{e_E(t)}}');
 hold on
 %uncomment the line below to add msmt rejections to the plot
