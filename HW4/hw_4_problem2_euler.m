@@ -19,7 +19,7 @@ mu=[0.1,5];
 %mu = 0.1;
 
 int_method = "euler"; %alternate = ode45
-int_method = "ode45";
+%int_method = "ode45";
 
 %function files;
 if int_method == "ode45"
@@ -31,7 +31,7 @@ end
 hfun='predict_msmt_vdp'; %m-file for Zk+1=h(Xk+1);
 
 nsig=[0.1, 0.5, 1];
-%nsig = 0.1;
+nsig = 0.1;
 
 for i = 1:length(mu)
     for j = 1:length(nsig)

@@ -10,14 +10,13 @@
 %
 clear all;
 MAE6760startup; %can adjust font size, figure size at the bottom of this script
-global MCcolors; %define colors as global with access
+global MCcolors; %define colors as global with access 
 rng(100);
 
 %% User Inputs
 % Two cases to consider: select either baseline or swervy
 scenario_type='baseline';
-scenario_type='swervy';
-use_bias = true;
+% scenario_type='swervy';
 
 %% Define System Model & Simulate
 %car inputs: acceleration and heading rate
@@ -30,11 +29,11 @@ nt=length(Uacc);
 t=[0:dt:dt*(nt-1)];
 nx=4;
 x_true=zeros(nx,nt);
-for k=1:(nt-1)
+for k=1:(nt-1),
     Vk=x_true(3,k);
-    Tk=x_true(4,k);
+    Tk=x_true(4,k);    
     x_true(:,k+1) = x_true(:,k) +...
-        dt*[Vk*cos(Tk);Vk*sin(Tk);Uacc(k);Uomega(k)];
+        dt*[Vk*cos(Tk);Vk*sin(Tk);Uacc(k);Uomega(k)];   
 end
 %
 %birds-eye-view of the 2D car position
@@ -51,36 +50,33 @@ legend('velocity (m/sec)','heading (rad)','Location','Southwest');
 grid
 
 %Create process noise, and accel/rate gyro measurements
-bias_acc=0.005; %accel bias
-bias_rg=0.005; %rg bias
-
+bias_acc=0.1; %accel bias
+bias_rg=-0.025; %rg bias
 x_true=[x_true;bias_acc*ones(1,nt);bias_rg*ones(1,nt)]; %update true states
-nx=nx+2;
-nw=4;
-Q=diag([0.1^2 0.04^2 0.01^2 0.01^2]);
+nx=nx;
+nw=2;
+Q=diag([0.1^2 0.04^2]);
 w=sqrtm(Q)*randn(nw,nt);
 Zacc=Uacc+bias_acc+w(1,:);
 Zrg=Uomega+bias_rg+w(2,:);
 
-%Create 2D GPS measurements
+%Create 2D GPS measurements 
 nz=2;
 R=eye(nz)*1^2;
 v=sqrtm(R)*randn(nz,nt);
 z=[x_true(1:2,:)] + v;
-H=[eye(2) zeros(2,4)]; %Note: output matrix is linear
+H=[eye(2) zeros(2,2)]; %Note: output matrix is linear
 
 
-% Run the EKF
-x0 = [0;0;0;0;bias_acc;bias_rg];
-P0_vals = [2^2 2^2 1^2 0.1^2 0.1^2 0.1^2];
+%% Run the EKF
+
+x0 = [0;0;0;0];
+P0_vals = [2^2 2^2 1^2 0.1^2];
 P0 = diag(P0_vals);
 xhatu = zeros(nx,nt); xhatu(:,1)=x0;
 Pu = zeros(nx,nx,nt); Pu(:,:,1)=P0;
 xhatp=xhatu;
 Pp=Pu;
-
-
-
 
 for k=1:(nt-1)
     % predict state
@@ -129,19 +125,17 @@ plot_estimator(t,xhatu(iix,:)*thC,Pu(iix,iix,:)*thC^2,x_true(iix,:)*thC,'error')
 ylabel('\theta heading (deg)');
 axis([0 35 -20 20]);
 
-%bias errors and 2-sigma plots over time
-if use_bias
-    figure('Position',[100 100 1600 600]);
-    tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
-    nexttile;
-    iix=5;
-    plot_estimator(t,xhatu(iix,:),Pu(iix,iix,:),x_true(iix,:),'error')
-    ylabel('accel bias (m/sec^2)');
-    iix=6;
-    nexttile;
-    plot_estimator(t,xhatu(iix,:),Pu(iix,iix,:),x_true(iix,:),'error')
-    ylabel('rate gyro bias (rad/sec)');
-end
+% %bias errors and 2-sigma plots over time
+% figure('Position',[100 100 1600 600]);
+% tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
+% nexttile;
+% iix=5;
+% plot_estimator(t,xhatu(iix,:),Pu(iix,iix,:),x_true(iix,:),'error')
+% ylabel('accel bias (m/sec^2)');
+% iix=6;
+% nexttile;
+% plot_estimator(t,xhatu(iix,:),Pu(iix,iix,:),x_true(iix,:),'error')
+% ylabel('rate gyro bias (rad/sec)');
 
 %birds-eye-view of the 2D car position and 2D 2-sigma uncertainty ellipsoids
 figure;
@@ -156,7 +150,7 @@ for i=1:length(iell),
     pu(i)=plot(xhatu([1],ii),xhatu([2],ii),'x','color',MCcolors.blue,'LineWidth',1);
     ne=length(Xe);
     x1=[Xe((ne/2+1):ne);Xe(1:ne/2)];
-    y1=[Ye((ne/2+1):ne);Ye(1:ne/2)];
+    y1=[Ye((ne/2+1):ne);Ye(1:ne/2)];    
     pp(i)=patch(x1,y1,'b','facecolor',MCcolors.blue,'edgecolor',MCcolors.blue,'linewidth',1,'FaceAlpha',.1,'EdgeAlpha',1);
 
 end
@@ -165,7 +159,7 @@ hold off;
 grid
 legend([ph pp(1) pt],'position estimate','error ellipse','truth','Location','Southwest');
 
-function Xkp1=predict_state_carposebias(Xk,U, dt)
+function Xkp1=predict_state_carposebias(Xk,U,dt);
 %
 %
 
@@ -174,41 +168,30 @@ Tk = Xk(4);
 
 acc = U(1);
 omegadot = U(2);
-b_acc = Xk(5);
-b_rg = Xk(6);
 
-Xkp1 = Xk + dt*[Vk*cos(Tk);
-    Vk*sin(Tk);
-    acc - b_acc;
-    omegadot - b_rg;
-    0;
-    0];
+    Xkp1 = Xk + dt*[Vk*cos(Tk);
+        Vk*sin(Tk);
+        acc;
+        omegadot];
 
 %
 end
 
-function [F,G]=getFG_carposebias(X,dt)
+function [F,G]=getFG_carposebias(X,dt);
 %
 %
-
 Vk = X(3);
 Tk = X(4);
 
-F = [1, 0, dt*cos(Tk), -dt*Vk*sin(Tk), 0, 0;
-    0, 1, dt*sin(Tk), dt*Vk*cos(Tk), 0, 0;
-    0, 0, 1, 0, -dt, 0;
-    0, 0, 0, 1, 0, -dt;
-    0, 0, 0, 0, 1,  0;
-    0, 0, 0, 0, 0,  1];
+    F = [1, 0, dt*cos(Tk), -dt*Vk*sin(Tk);
+        0, 1, dt*sin(Tk), dt*Vk*cos(Tk);
+        0, 0, 1, 0;
+        0, 0, 0, 1];
 
-G = [0, 0, 0, 0;
-    0, 0, 0, 0;
-    dt, 0, 0, 0;
-    0, dt, 0, 0;
-    0, 0, dt, 0;
-    0, 0, 0, dt];
-
-
+    G = [0, 0;
+        0, 0;
+        dt, 0;
+        0, dt];
 
 %
 end
@@ -231,7 +214,7 @@ elseif strcmp(scenario_type,'swervy'),
         -ones(1,20)*pi/2/2 ones(1,20)*pi/2/2 -ones(1,10)*pi/2/2 zeros(1,30) ...
         ones(1,10)*pi/2/2 -ones(1,20)*pi/2/2 ones(1,20)*pi/2/2 ...
         -ones(1,20)*pi/2/2 ones(1,20)*pi/2/2 -ones(1,10)*pi/2/2 ...
-        zeros(1,60)];
+        zeros(1,60)];  
 else,
     return;
 end
@@ -239,11 +222,10 @@ end
 end
 
 %% --------- start-up items
-
 function MAE6760startup(font_size);
 %
 % define colors for plotting
-global MCcolors; %define colors as global with access
+global MCcolors; %define colors as global with access 
 MCcolors.red=[200,0,0]/255;
 MCcolors.blue=[4,51,255]/255;
 MCcolors.purple=[147,23,255]/255;
