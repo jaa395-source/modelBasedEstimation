@@ -21,7 +21,7 @@ do_all_plots = false;
 
 %% Particle Filter Toggle
 use_particle_filter = true;
-N_part = 5000;
+N_part = 10000;
 N_eff_value = N_part/2;
 
 %% Define System Model & Simulate
@@ -59,7 +59,7 @@ if do_all_plots
 end
 %Create process noise, and accel/rate gyro measurements
 bias_acc=0.01; %accel bias
-bias_rg=0.005; %rg bias
+bias_rg=-0.005; %rg bias
 x_true=[x_true;bias_acc*ones(1,nt);bias_rg*ones(1,nt)]; %update true states
 nx=nx+2;
 nw=4;
@@ -76,7 +76,7 @@ Zrg=Uomega+bias_rg+w(2,:);
 
 %Create 2D GPS measurements
 nz=2;
-R=eye(nz)*1.5^2;
+R=eye(nz)*1^2;
 v=sqrtm(R)*randn(nz,nt);
 z=[x_true(1:2,:)] + v;
 H=[eye(2) zeros(2,4)]; %Note: output matrix is linear
@@ -84,14 +84,32 @@ H=[eye(2) zeros(2,4)]; %Note: output matrix is linear
 
 %% Run the Particle Filter
 x0 = [0;0;0;0;bias_acc;bias_rg];
-P0_vals = [0.5 0.5 0.5 0.1 0.5 0.1].^2;
+P0_vals = [0.5 0.5 0.5 0.5 0.5 0.1].^2;
 P0 = diag(P0_vals);
 xhatu = zeros(nx,nt); xhatu(:,1)=x0;
 Pu = zeros(nx,nx,nt); Pu(:,:,1)=P0;
 xhatp=xhatu;
 Pp=Pu;
-[xhatu,Pu] = particle_filter_analysis(N_part, nx, nk, x0, P0, z, dt, H, R, N_eff_value, Zacc, Zrg);
 
+if ~use_particle_filter
+    for k=1:(nt-1)
+        % predict state
+        xhatp(:,k+1) = predict_state_carposebias(xhatu(:,k), [Zacc(k); Zrg(k)], dt);
+
+        % predict covariance
+        [F,G] = getFG_carposebias(xhatu(:,k), dt);
+        Pp(:,:,k+1) = F * Pu(:,:,k) * F' + G * Q * G';
+
+        % Kalman Gain
+        K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+
+        % update state with measurement
+        xhatu(:,k+1) = xhatp(:,k+1) + K * (z(:,k+1) - H * xhatp(:,k+1));
+        Pu(:,:,k+1) = (eye(nx) - K * H) * Pp(:,:,k+1);
+    end
+else
+    [xhatu,Pu] = particle_filter_analysis(N_part, nx, nk, nw, x0, P0, sqrt(Q), z, dt, H, R, N_eff_value, Zacc, Zrg);
+end
 
 
 %% Generate filter plots
@@ -167,143 +185,58 @@ Tk = Xk(4, :);
 
 acc = U(1, :);
 omegadot = U(2, :);
-b_acc = Xk(5,:);
-b_rg = Xk(6,:);
 
 Xkp1 = Xk + dt*[Vk.*cos(Tk);
     Vk.*sin(Tk);
-    acc - b_acc;
-    omegadot - b_rg;
+    acc;
+    omegadot;
     zeros(size(omegadot));
     zeros(size(omegadot))];
 
 %
 end
-function [xhatu,Pu] = particle_filter_analysis(N_part, nx, nk, x0, P0, z, dt, H, R, N_eff_value, Zacc, Zrg)
-% Corrected particle filter for state:
-% x = [x; y; v; theta; b_acc; b_rg]
 
-    X_part = zeros(nx, N_part, nk);
-    W = zeros(nk, N_part);
+function Xkp1=predict_state_carposebias(Xk,U,dt)
+%
+%
 
-    % Initialize particles from prior
-    X_part(:,:,1) = mvnrnd(x0, P0, N_part)';
-    W(1,:) = ones(1,N_part) / N_part;
+Vk = Xk(3);
+Tk = Xk(4);
 
-    xhatu = zeros(nx, nk);
-    Pu = zeros(nx, nx, nk);
+acc = U(1);
+omegadot = U(2);
 
-    % Initial estimate and covariance
-    xhatu(:,1) = X_part(:,:,1) * W(1,:)';
-    E0 = X_part(:,:,1) - xhatu(:,1);
-    Pu(:,:,1) = E0 * diag(W(1,:)) * E0';
+Xkp1 = Xk + dt*[Vk.*cos(Tk);
+    Vk.*sin(Tk);
+    acc;
+    omegadot;
+    zeros(size(omegadot));
+    zeros(size(omegadot))];
 
-    % Process noise tuning parameters
-    % These are the most important tuning knobs for x3 and x4 consistency
-    sigma_v  = 0.15;    % velocity process noise
-    sigma_th = 0.04;    % heading process noise
-    sigma_ba = 0.002;   % accel bias random walk
-    sigma_bg = 0.0015;  % gyro bias random walk
-
-    % Measurement likelihood constants
-    nz = size(R,1);
-    Rinv = inv(R);
-    meas_const = 1 / sqrt((2*pi)^nz * det(R));
-
-    for k = 1:(nk-1)
-        Xk = X_part(:,:,k);
-
-        % Extract particle states
-        xk  = Xk(1,:);
-        yk  = Xk(2,:);
-        vk  = Xk(3,:);
-        thk = Xk(4,:);
-        bak = Xk(5,:);
-        bgk = Xk(6,:);
-
-        % Draw process noise
-        nv  = sigma_v  * randn(1,N_part);
-        nth = sigma_th * randn(1,N_part);
-        nba = sigma_ba * randn(1,N_part);
-        nbg = sigma_bg * randn(1,N_part);
-
-        % Use measured IMU values, corrected by each particle's bias
-        a_eff = Zacc(k) - bak;
-        w_eff = Zrg(k)  - bgk;
-
-        % Propagate particles
-        xkp1  = xk  + dt * (vk .* cos(thk));
-        ykp1  = yk  + dt * (vk .* sin(thk));
-        vkp1  = vk  + dt * a_eff + nv;
-        thkp1 = thk + dt * w_eff + nth;
-        bakp1 = bak + nba;
-        bgkp1 = bgk + nbg;
-
-        X_pred = [xkp1; ykp1; vkp1; thkp1; bakp1; bgkp1];
-
-        % Predicted measurement
-        Zhat = H * X_pred;
-
-        % Innovation
-        innov = z(:,k+1) - Zhat;
-
-        % Likelihood
-        L = zeros(1,N_part);
-        for ip = 1:N_part
-            e = innov(:,ip);
-            L(ip) = meas_const * exp(-0.5 * e' * Rinv * e);
-        end
-
-        % Weight update
-        W_pred = W(k,:) .* L;
-        Wsum = sum(W_pred);
-
-        if ~isfinite(Wsum) || Wsum <= 0
-            Wk = ones(1,N_part) / N_part;
-        else
-            Wk = W_pred / Wsum;
-        end
-
-        % Effective sample size
-        Neff = 1 / sum(Wk.^2);
-
-        % Resample only when needed
-        if Neff < N_eff_value
-            idx = systematic_resample(Wk);
-            X_post = X_pred(:,idx);
-            W_post = ones(1,N_part) / N_part;
-        else
-            X_post = X_pred;
-            W_post = Wk;
-        end
-
-        % Store posterior particles and weights
-        X_part(:,:,k+1) = X_post;
-        W(k+1,:) = W_post;
-
-        % Posterior estimate and covariance
-        xhatu(:,k+1) = X_post * W_post';
-        E = X_post - xhatu(:,k+1);
-        Pu(:,:,k+1) = E * diag(W_post) * E';
-    end
+%
 end
 
-function idx = systematic_resample(w)
-    N = length(w);
-    edges = cumsum(w);
-    edges(end) = 1.0;
+function [F,G]=getFG_carposebias(X,dt)
+%
+%
 
-    u0 = rand / N;
-    u = u0 + (0:N-1)/N;
+Vk = X(3);
+Tk = X(4);
 
-    idx = zeros(1,N);
-    j = 1;
-    for i = 1:N
-        while u(i) > edges(j)
-            j = j + 1;
-        end
-        idx(i) = j;
-    end
+F = [1, 0, dt*cos(Tk), -dt*Vk*sin(Tk), 0, 0;
+    0, 1, dt*sin(Tk), dt*Vk*cos(Tk), 0, 0;
+    0, 0, 1, 0, -1, 0;
+    0, 0, 0, 1, 0, -1;
+    0, 0, 0, 0, 1, 0;
+    0, 0, 0, 0, 0, 1];
+
+G = [0, 0;
+    0, 0;
+    dt, 0;
+    0, dt
+    0, 0;
+    0, 0];
+%
 end
 
 function [Uacc,Uomega]=get_controlinputs(scenario_type);
@@ -332,58 +265,58 @@ end
 end
 
 %% Particle Filter Function
-% function [xhatu,Pu] = particle_filter_analysis(N_part, nx, nk, nw, x0, P0, Qsq, z, dt, H, R, N_eff_value, Zacc, Zrg)
-% X_part = zeros(nx, N_part, nk);
-% X_part(:,:,1) = mvnrnd(x0, P0, N_part)';
-% W0 = ones(1,N_part)/N_part;
-% W = zeros(nk,N_part); W(1,:)=W0;
-% 
-% for k = 1:nk-1
-%     % start with the prior particles
-%     X_prior = X_part(:,:,k);
-% 
-%     % Prediction Step
-%     W_part = Qsq*randn(nw, N_part);
-%     U = [Zacc(k); Zrg(k); 0; 0];
-%     X_pred = predict_state_carposebias_pf(X_prior, U + W_part, dt);
-% 
-%     % Update Step
-%     z_current = z(:, k+1);
-%     Z_hat = H*X_pred;
-% 
-%     Inn = z_current*ones(1,N_part) - Z_hat;
-% 
-%     % Calculate likelihood of weighting of each particle
-%     Rinv = inv(R);
-%     for ip=1:N_part
-%         e = Inn(:, ip);
-%         L(1,ip) = exp(-0.5*e'*Rinv*e);
-%     end
-% 
-%     % Update Weights
-%     Wk_unnorm = W(k,:).*L;
-%     Wk = Wk_unnorm/sum(Wk_unnorm);
-% 
-%     Neff_thresh = N_eff_value;
-%     Neff(k) = 1/[Wk*Wk'];
-% 
-%     if Neff(k)<Neff_thresh
-%         CDF = cumsum(Wk)/sum(Wk);
-%         CDF_plus = CDF + rand(1,N_part)*1E-6;
-%         iSelect = rand(1, N_part);
-%         iNextGen = interp1(CDF_plus, 1:N_part, iSelect, 'nearest', 'extrap');
-%         X_part(:,:,k+1) = X_pred(:, iNextGen);
-%         W(k+1, :) = ones(1,N_part)/N_part;
-%     else
-%         X_part(:,:,k+1) = X_pred;
-%         W(k+1,:) = Wk;
-%     end
-% 
-%     xhatu(:,k+1) = sum(Wk.*X_part(:,:,k+1), 2);
-%     Err = [X_part(:,:,k+1) - xhatu(:,k+1)*ones(1,N_part)];
-%     Pu(:,:,k+1) = Err*diag(Wk)*Err';
-% end
-% end
+function [xhatu,Pu] = particle_filter_analysis(N_part, nx, nk, nw, x0, P0, Qsq, z, dt, H, R, N_eff_value, Zacc, Zrg)
+X_part = zeros(nx, N_part, nk);
+X_part(:,:,1) = mvnrnd(x0, P0, N_part)';
+W0 = ones(1,N_part)/N_part;
+W = zeros(nk,N_part); W(1,:)=W0;
+
+for k = 1:nk-1
+    % start with the prior particles
+    X_prior = X_part(:,:,k);
+
+    % Prediction Step
+    W_part = Qsq*randn(nw, N_part);
+    U = [Zacc(k); Zrg(k)];
+    X_pred = predict_state_carposebias_pf(X_prior, U + W_part, dt);
+
+    % Update Step
+    z_current = z(:, k+1);
+    Z_hat = H*X_pred;
+
+    Inn = z_current*ones(1,N_part) - Z_hat;
+
+    % Calculate likelihood of weighting of each particle
+    Rinv = inv(R);
+    for ip=1:N_part
+        e = Inn(:, ip);
+        L(1,ip) = exp(-0.5*e'*Rinv*e);
+    end
+
+    % Update Weights
+    Wk_unnorm = W(k,:).*L;
+    Wk = Wk_unnorm/sum(Wk_unnorm);
+
+    Neff_thresh = N_eff_value;
+    Neff(k) = 1/[Wk*Wk'];
+
+    if Neff(k)<Neff_thresh
+        CDF = cumsum(Wk)/sum(Wk);
+        CDF_plus = CDF + rand(1,N_part)*1E-6;
+        iSelect = rand(1, N_part);
+        iNextGen = interp1(CDF_plus, 1:N_part, iSelect, 'nearest', 'extrap');
+        X_part(:,:,k+1) = X_pred(:, iNextGen);
+        W(k+1, :) = ones(1,N_part)/N_part;
+    else
+        X_part(:,:,k+1) = X_pred;
+        W(k+1,:) = Wk;
+    end
+
+    xhatu(:,k+1) = sum(Wk.*X_part(:,:,k+1), 2);
+    Err = [X_part(:,:,k+1) - xhatu(:,k+1)*ones(1,N_part)];
+    Pu(:,:,k+1) = Err*diag(Wk)*Err';
+end
+end
 
 %% --------- start-up items
 function MAE6760startup(font_size);

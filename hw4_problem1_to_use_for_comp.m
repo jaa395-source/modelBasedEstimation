@@ -239,6 +239,8 @@ end
 %
 end
 
+%%
+
 %% --------- start-up items
 
 function MAE6760startup(font_size);
