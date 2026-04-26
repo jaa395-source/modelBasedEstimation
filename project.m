@@ -4,7 +4,9 @@ drag_coeff = 1.0;
 lift_coeff = 1.0;
 surface_area = 1.0;
 mass = 1.0;
-
+C_gamma = 0;
+C_psi = 0;
+noise  = 0;
 
 %% Define analysis functions
 % state vector X = [r, theta, phi, v, gamma, psi]
@@ -25,7 +27,8 @@ end
 
 function dynamicPressure = calculate_dynamic_pressure(rangeToEarth_km, v)
 rho_0 = 1.225; %kg/m^3
-h_m = (rangeToEarth - 6731.8)*1000;
+earth_radius_km = 6371.8;
+h_m = (rangeToEarth - earth_radius_km)*1000;
 hs_m = 6700;
 rho = rho_0.*exp(-h_m/hs_m);
 
@@ -36,7 +39,6 @@ function accelerations = calculate_flight_accelerations(dynamicPressure, drag_co
     accelerations = [dynamicPressure.*drag_coeff.*surface_area./mass;
                      dynamicPressure.*lift_coeff.*surface_area./mass];
 end
-
 
 function Xk = propagate_state(Xk, noise, accelerations, sigma_deg, C_gamma, C_psi, dt)
 r = Xk(1,:);
