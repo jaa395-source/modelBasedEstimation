@@ -7,7 +7,42 @@ mass = 1.0;
 C_gamma = 0;
 C_psi = 0;
 noise  = 0;
+dt = 1;
 
+
+
+%% Load in data
+trueTrajectory = readtable(hypersonicVehicleTrajectoryFilePath_J2000);
+initPosition = trueTrajectory(1,:);
+
+
+
+% Plot true trajectory
+figure();
+hold on;
+title("True vs Calculated Trajectory");
+predicted_steps = size(trueTrajectory, 1) - 1;
+
+nextSteps = initPosition;
+for predIdx = 1:predicted_steps
+
+    currentStep = nextSteps(end, :);
+    currentLocation = currentStep(1:3);
+    currentVelocity = currentStep(4:6);
+
+    rangeToEarth_km = norm(currentLocation);
+    dynamicPressure = calculate_dynamic_pressure(rangeToEarth_km, currentVelocity);
+    accelerations = calculate_flight_accelerations(dynamicPressure, drag_coeff, lift_coeff, surface_area, mass);
+
+    propagatedStep = propagate_state(currentStep, noise,...
+        accelerations, sigma_deg, C_gamma, C_psi, dt);
+    nextSteps(size(nextSteps, 1) + 1, :) = propagatedStep;
+    
+
+
+
+
+end
 %% Define analysis functions
 % state vector X = [r, theta, phi, v, gamma, psi]
 % ALL ANGLES IN DEGREES
@@ -28,7 +63,7 @@ end
 function dynamicPressure = calculate_dynamic_pressure(rangeToEarth_km, v)
 rho_0 = 1.225; %kg/m^3
 earth_radius_km = 6371.8;
-h_m = (rangeToEarth - earth_radius_km)*1000;
+h_m = (rangeToEarth_km - earth_radius_km)*1000;
 hs_m = 6700;
 rho = rho_0.*exp(-h_m/hs_m);
 
