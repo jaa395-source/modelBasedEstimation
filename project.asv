@@ -63,28 +63,15 @@ for predIdx = firstUsedDataPoint+1:predicted_steps
 
 end
 
+% Calculate Residuals
+residuals = X_true - X_pred;
+lat_residual_ratios = residuals
+
 
 % Plot data
 plot(X_true(3,:), X_true(2,:));
 plot(X_pred(3,:), X_pred(2,:));
-legend({'True', 'Predicted'});
-hold off;
-
-
-% Calculate Residuals
-figure();
-hold on;
-title("Residual Ratios vs Time");
-xlabel("Time (EpSec)");
-ylabel("Residual Ratios");
-
-residuals = X_true - X_pred;
-lat_residual_ratios = residuals(2,:)./X_true(2,:);
-lon_residual_ratios = residuals(3,:)./X_true(3,:);
-plot(lat_residual_ratios);
-plot(lon_residual_ratios);
-legend({'Latitude Residual Ratios', 'Longitude Residual Ratios'});
-
+legend({'True', 'Predicted'})
 disp("Done!(?)");
 %% Define analysis functions
 % state vector X = [r, theta, phi, v, gamma, psi]
