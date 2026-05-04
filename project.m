@@ -3,7 +3,7 @@ clear; close all; clc;
 hypersonicVehicleTrajectoryFilePath_J2000 = "HXRV_X43_PosVel.csv";
 drag_coeff = 0.015;
 lift_coeff = 0.085;
-surface_area = 3.99483;
+surface_area = 3.99;
 mass = 1400.0;
 C_gamma = 0;
 C_psi = 0;
@@ -12,17 +12,26 @@ dt = 1;
 
 % https://help.agi.com/stk/index.htm#training/DME_Hypersonics.htm?Highlight=Hypersonic
 
-%% Load in data
-trueTrajectory = readtable(hypersonicVehicleTrajectoryFilePath_J2000);
-firstUsedDataPoint = 2;
-totalDataPoints = size(trueTrajectory, 1);
-totalUsedDataPoints = length(firstUsedDataPoint:totalDataPoints);
+%% Process Az, El, Range Data
+measurementSets = size(allData, 3);
+reformedMeasurements = nan(6, size(allData, 1) - 1,  measurementSets);
 
-initPosition = trueTrajectory{firstUsedDataPoint,:}*1000;
-
-[theta_lat, phi_lon, r_alt_m] = calculate_llr(initPosition(2:4));
-[v_speed, gamma, psi] = calculate_velocity_values(initPosition(2:end));
-X0 = [r_alt_m; theta_lat; phi_lon; v_speed; gamma; psi];
+for setIdx = 1:measurementSets
+    for timeStep = 1:size(allData, 1)
+        currentLocation = positionData(timeStep, :, setIdx);
+        %currentLocation = [0;0;0];
+        if timeStep == 1
+            tempData = allData(timeStep, 2:end, setIdx);
+            tempFixedPosition_m = calculate_vehicle_fixed_position(tempData(1), tempData(2), tempData(3), currentLocation);
+        else
+            currData = allData(timeStep, 2:end, setIdx);
+            currFixedPosition_m = calculate_vehicle_fixed_position(currData(1), currData(2), currData(3), currentLocation);
+            currFixedVelocity_m = (currFixedPosition_m - tempFixedPosition_m)/dt;
+            reformedMeasurements(:, timeStep, measurementSets) = [currFixedPosition_m; currFixedVelocity_m];
+            tempData = currData;
+        end
+    end
+end
 
 X_true = zeros(6, totalUsedDataPoints);
 X_pred = zeros(6, totalUsedDataPoints);
@@ -30,16 +39,9 @@ X_pred = zeros(6, totalUsedDataPoints);
 X_true(:,1) = X0;
 X_pred(:,1) = X0;
 
-
-% Plot true trajectory
-figure();
-hold on;
-title("True vs Calculated Trajectory");
-predicted_steps = size(trueTrajectory, 1) - 1;
-use_predicition = true;
-
 for predIdx = firstUsedDataPoint+1:predicted_steps
     shiftedIdx = predIdx - firstUsedDataPoint + 1;
+
     % Recalculate true values
     trueIdx = trueTrajectory{predIdx,:}*1000;
     [theta_lat, phi_lon, r_alt_m] = calculate_llr(trueIdx(2:4));
@@ -64,7 +66,12 @@ for predIdx = firstUsedDataPoint+1:predicted_steps
 end
 
 
-% Plot data
+% Plot true trajectory
+figure();
+hold on;
+title("True vs Calculated Trajectory");
+predicted_steps = size(trueTrajectory, 1) - 1;
+use_predicition = true;
 plot(X_true(3,:), X_true(2,:));
 plot(X_pred(3,:), X_pred(2,:));
 legend({'True', 'Predicted'});
@@ -106,7 +113,7 @@ r = range;
 currentLocation = currentLocation(:);
 relCartesian = [r*cosd(th)*cosd(phi);...
     r*cosd(th)*cosd(phi);...
-    r*sind(th0)];
+    r*sind(th)];
 
 vehicleFixedPosition_m = (currentLocation + relCartesian);
 end
@@ -146,6 +153,16 @@ v_speed = v_norm;
 
 end
 
+% Convert Az, El, Range to state vector
+function Xk = calculate_state_vector_from_measurements(fixedState)
+fixedPosition_m = fixedState(1:3);
+
+[theta_lat, phi_lon, r_m] = calculate_llr(fixedPosition_m);
+[v_speed, gamma, psi] = calculate_velocity_values(fixedState);
+
+Xk = [r_m; theta_lat; phi_lon; v_speed; gamma; psi];
+end
+
 
 % Functions to calculate propogation values
 function dynamicPressure = calculate_dynamic_pressure(rangeToEarth_m, v)
@@ -166,7 +183,7 @@ end
 % Propogation Functions
 function Xk = propagate_state(Xk, noise, accelerations, C_gamma, C_psi, dt)
 sigma_deg = 35;
-g = 9.81; 
+g = 9.81;
 r = Xk(1,:);
 th = Xk(2,:);
 phi = Xk(3,:);
