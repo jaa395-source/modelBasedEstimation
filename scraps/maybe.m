@@ -88,3 +88,14 @@ function [f_sym, A_sym, A0, f0] = linearize_entry_dynamics(X0, sigma0, params)
     A0 = double(subs(A_sym, sub_syms, sub_vals));
     f0 = double(subs(f_sym, sub_syms, sub_vals));
 end
+
+%%
+axis_lims = [0 440 -30 30];
+plot_estimator2(tvec,xinfo_many,Pinfo_many,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
+sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+
+axis_lims = [0 440 -0.7 0.7];
+plot_estimator2(tvec,xinfo_many,Pinfo_many,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
+sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+
+disp("Information filter run for " + msmt_count + " sensors");
