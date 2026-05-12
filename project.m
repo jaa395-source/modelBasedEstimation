@@ -153,31 +153,10 @@ for k = 1:(nt-1)
     yhatp(:, k+1) = ((eye(nx) - Om*G')*Fi')*yhatu(:,k);
 
 
-    % innovation
-    % inn = (z(:, k+1) - H*yhatp(:, k+1));
-    % P1p = inv(Yp(:,:,k+1));
-    % S = H*P1p(1:n, 1:n)*H' + R;
-    % 
-    % Lam(1,k+1) = inn'*inv(S)*inn;
-    % 
-    % if Lam(1,k+1)>Lam0
-    %     Nrej = Nrej + 1;
-    %     Trej(length(Trej) + 1) = tvec(k+1);
-    %     Erej(:,size(Erej,2) + 1) = z(:,k+1)-H*x_true(:,k+1);
-    % end
 
     % update
     yhatu(:,k+1) = yhatp(:,k+1) + H'*Ri*z(:,k+1);
     Yu(:,:,k+1) = Yp(:,:,k+1) + H'*Ri*H;
-
-    % if k>=win
-    %     LamF(1,k+1) = mean(Lam(k-win+2:k+1));
-    % end
-    % if (LamF(1,k+1) < Blow) | (LamF(k+1)>Bhigh)
-    %     NFrej = NFrej + 1;
-    %     TFrej(length(TFrej) + 1) = tvec(k+1);
-    %     EFrej(:,size(EFrej,2) + 1) = z(:,k+1)-H*x_true(:,k+1);
-    % end
 
 
     % pull out state and covariance for plotting
