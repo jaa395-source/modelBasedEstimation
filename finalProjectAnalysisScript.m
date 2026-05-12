@@ -368,7 +368,7 @@ disp(Nrej/nk*100)
 %uncomment lines below to output the percent of time filter is inconsistent
 disp('(c) percent of time filter is inconsistent:');
 disp(NFrej/nk*100)
-
+%%
 figNum = 3;
 figs(figNum)=figure('Position',[100 100 800 600]);
 plot(tvec,Lam,':','Color', MCcolors.mag);
@@ -379,7 +379,7 @@ plot(tvec,Bhigh*ones(1,nk),'--','Color',MCcolors.blue);
 hold off;
 ylabel('filter integrity')
 xlabel('time \it{t} (sec)')
-title('Information Filter integrity test statistic')
+title('Information Filter Integrity Test Statistic')
 legend('inn test statistic \lambda','IF test statistic \lambda_{10}^{IF}','lower bound','upper bound')
 saveas(figs(figNum), "information_filter_" + msmt_count + "_sensors_integrity_stat.jpg");
 
