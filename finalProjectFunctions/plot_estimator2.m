@@ -1,6 +1,6 @@
-function plot_estimator2(t,xhat,Phat,x_true,z,ii, names, axis_lims);
+function fig = plot_estimator2(t,xhat,Phat,x_true,z,ii, names, axis_lims);
 %
-figure('Position',[100 100 1600 600]);
+fig = figure('Position',[100 100 1600 600]);
 tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
 nexttile;
 plot_estimator(t,xhat(ii(1),:),Phat(ii(1),ii(1),:),x_true(ii(1),:),'error',z(ii(1),:))

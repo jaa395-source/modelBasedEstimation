@@ -58,7 +58,7 @@ H = [H zeros(4,2)];
 q_scale = 100;
 Q = q_scale*diag([50, 50 0.1 0.1]);
 
-R_sigmas = [1000, 0.5, 0.5, 100];
+R_sigmas = [1000, 0.01, 0.01, 100];
 R = diag(R_sigmas);
 
 v = sqrtm(R)*randn(nz,nt);
@@ -148,7 +148,6 @@ for k=1:(nk-1)
     xhatu(:,k+1) = xhatp(:,k+1) + K*(z(:,k+1) - H*xhatp(:,k+1));
     Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*R*K';
 
-
     % Information predict
     Fi = inv(F);
     Mi = Fi'*Yu(:,:,k)*Fi;
@@ -189,34 +188,40 @@ end
 
 %% Plot Initial Comparison
 axis_lims = [0 440 -75 75];
-plot_estimator2(tvec,xhatu,Pu,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
+fig = plot_estimator2(tvec,xhatu,Pu,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
 sgtitle('Kalman Filter','FontWeight','bold','Fontsize',16);
+saveas(fig, "kalman_filter_" + string(1) + "_sensors_rv.jpg");
 
 axis_lims = [0 440 -2 2];
-plot_estimator2(tvec,xhatu,Pu,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
+fig = plot_estimator2(tvec,xhatu,Pu,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
 sgtitle('Kalman Filter','FontWeight','bold','Fontsize',16);
+saveas(fig, "kalman_filter_" + string(1) + "_sensors_ll.jpg");
 
-axis_lims = [0 440 -75 74];
-plot_estimator2(tvec,xinfo,Pinfo,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
+axis_lims = [0 440 -75 75];
+fig = plot_estimator2(tvec,xinfo,Pinfo,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
 sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+saveas(fig, "information_filter_" + string(1) + "_sensors_rv.jpg");
 
 axis_lims = [0 440 -2 2];
-plot_estimator2(tvec,xinfo,Pinfo,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
+fig = plot_estimator2(tvec,xinfo,Pinfo,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
 sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+saveas(fig, "information_filter_" + string(1) + "_sensors_ll.jpg");
 
 
 %% Run Information Filter with multiple sensors
-R_sigmas = [1000, 0.5, 0.5, 100];
-R = diag(R_sigmas);
 
-for setIdx = 2:size(allData, 3)
+% rng(10);
+% randn(nz,nt);
+% randn(nw,nt);
+totalSensorCount = 20; %OG was 10
+for setIdx = 2:totalSensorCount
     v = sqrtm(R)*randn(nz,nt);
     allZ(:,:,setIdx - 1) = (x_true(1:4,:)) + v;
 end
 
 q_scale = 100;
 Q = q_scale*diag([50, 50 0.1 0.1]);
-Q = 1.7*Q;
+Q = 2.2*Q; %OG was 2
 %IF Initial State
 Y0 = inv(P0);
 y0 = Y0*x0;
@@ -297,19 +302,64 @@ for k=1:(nk-1)
         EFrej(:,size(EFrej,2) + 1) = z(:,k+1)-H*x_true(:,k+1);
     end
 end
-
-msmt_count = string(size(allData, 3));
+disp("Done processing many measurement information filter")
+% Plot Information Filter Data
+msmt_count = string(totalSensorCount);
+% Radius, Speed
+ix = 1;
+figNum = 1;
+figs(figNum)=figure('Position',[100 100 1600 600]);
+ti(ix)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
+nexttile;
 axis_lims = [0 440 -30 30];
-plot_estimator2(tvec,xinfo_many,Pinfo_many,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
+plot_estimator(tvec,xinfo_many(ix,:),Pinfo_many(ix,ix,:),x_true(ix,:),'error',z(ix,:));
 sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+ylabel('radius error estimate (m)');
+axis(axis_lims);
+hold on
+plot(Trej,Erej(ix,:),'mo','DisplayName','Msmt Rejection');
+hold off;
+nexttile;
+ix = 4;
+axis_lims = [0 440 -30 30];
+plot_estimator(tvec,xinfo_many(ix,:),Pinfo_many(ix,ix,:),x_true(ix,:),'error',z(ix,:));
+ylabel('speed error estimate (m/s)');
+axis(axis_lims);
+hold on
+%uncomment the line below to add msmt rejections to the plot
+plot(Trej,Erej(ix,:),'mo','DisplayName','Msmt Rejection');
+hold off;
+sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+saveas(figs(figNum), "information_filter_" + msmt_count + "_sensors_rv.jpg");
 
+
+% Longitude, Latitude
+ix = 2;
+figNum = 2;
+figs(figNum)=figure('Position',[100 100 1600 600]);
+ti(ix)=tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
+nexttile;
 axis_lims = [0 440 -0.7 0.7];
-plot_estimator2(tvec,xinfo_many,Pinfo_many,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
+plot_estimator(tvec,xinfo_many(ix,:),Pinfo_many(ix,ix,:),x_true(ix,:),'error',z(ix,:));
 sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+ylabel('longitude error estimate (rad)');
+axis(axis_lims);
+hold on
+plot(Trej,Erej(ix,:),'mo','DisplayName','Msmt Rejection');
+hold off;
+nexttile;
+ix = 3;
+axis_lims = [0 440 -0.7 0.7];
+plot_estimator(tvec,xinfo_many(ix,:),Pinfo_many(ix,ix,:),x_true(ix,:),'error',z(ix,:));
+ylabel('longitude error estimate (rad)');
+axis(axis_lims);
+hold on
+%uncomment the line below to add msmt rejections to the plot
+plot(Trej,Erej(ix,:),'mo','DisplayName','Msmt Rejection');
+hold off;
+sgtitle('Information Filter (' + msmt_count + ' msmts)','FontWeight','bold','Fontsize',16);
+saveas(figs(figNum), "information_filter_" + msmt_count + "_sensors_ll.jpg");
 
-disp("Information filter run for " + msmt_count + " sensors");
-
-%
 %uncomment lines below to output the percent of msmts rejected
 disp('(c) percent of msmts rejected:');
 disp(Nrej/nk*100)
@@ -319,3 +369,5 @@ disp(NFrej/nk*100)
 
 
 
+% Close out
+close all;
