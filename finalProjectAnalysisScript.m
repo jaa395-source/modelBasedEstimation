@@ -6,6 +6,8 @@ clear all; close all; clc;
 rng(10);
 %% Load in Functions
 addpath("finalProjectFunctions\");
+MAE6760startup; %can adjust font size, figure size at the bottom of this script
+global MCcolors;
 
 %% Load in true state and define parameters
 load('measurement_data.mat');
@@ -367,6 +369,19 @@ disp(Nrej/nk*100)
 disp('(c) percent of time filter is inconsistent:');
 disp(NFrej/nk*100)
 
+figNum = 3;
+figs(figNum)=figure('Position',[100 100 800 600]);
+plot(tvec,Lam,':','Color', MCcolors.mag);
+hold on;
+plot(tvec((win+1):end),LamF((win+1):end),'-','Color',MCcolors.purple);
+plot(tvec,Blow*ones(1,nk),'--','Color',MCcolors.blue);
+plot(tvec,Bhigh*ones(1,nk),'--','Color',MCcolors.blue);
+hold off;
+ylabel('filter integrity')
+xlabel('time \it{t} (sec)')
+title('Information Filter integrity test statistic')
+legend('inn test statistic \lambda','IF test statistic \lambda_{10}^{IF}','lower bound','upper bound')
+saveas(figs(figNum), "information_filter_" + msmt_count + "_sensors_integrity_stat.jpg");
 
 
 % Close out
