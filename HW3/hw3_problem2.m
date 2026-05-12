@@ -78,7 +78,7 @@ xhatu = zeros(nx,nk);xhatu(:,1) = x0_A;
 Pp = zeros(nx,nx,nk);Pp(:,:,1) = P0;
 Pu = zeros(nx,nx,nk);Pu(:,:,1) = P0;
 n = nk;
-
+%%
 for k=1:(n-1)
     % Preidct
     xhatp(:,k+1) = F*xhatu(:,k);

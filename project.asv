@@ -1,78 +1,248 @@
 clear; close all; clc;
+MAE6760startup; %can adjust font size, figure size at the bottom of this script
+global MCcolors;
 %% Define Top Level Parameters
-hypersonicVehicleTrajectoryFilePath_J2000 = "HXRV_X43_PosVel.csv";
-drag_coeff = 0.015;
-lift_coeff = 0.085;
-surface_area = 3.99483;
-mass = 1400.0;
-C_gamma = 0;
-C_psi = 0;
+load('measurement_data.mat');
+tvec = (1:1:size(hypersonicPositionData, 1));
+t = tvec;
+plot_integrity = false;
+
+params.Re = 6371.1*1000;
+params.hs = 6700;
+params.rho0 = 1.225;
+params.CD= 0.015;
+params.CL = 0.085;
+params.S = 3.99;
+params.m = 1400.0;
+params.mu = 3.99e14;
+params.Cgamma = 0;
+params.Cpsi = 0;
+params.omegaE = 7.2921159e-5;   % Earth rotation rate, rad/s
 noise  = 0;
 dt = 1;
 
+params_vec = [
+    6371.1e3;
+    3.986004418e14;
+    1.225;
+    6700;
+    3.99;
+    1400;
+    0.085;
+    0.015
+];
+
+disp("Defined Parameters");
+
 % https://help.agi.com/stk/index.htm#training/DME_Hypersonics.htm?Highlight=Hypersonic
 
-%% Load in data
-trueTrajectory = readtable(hypersonicVehicleTrajectoryFilePath_J2000);
-firstUsedDataPoint = 2;
-totalDataPoints = size(trueTrajectory, 1);
-totalUsedDataPoints = length(firstUsedDataPoint:totalDataPoints);
+%% Process Az, El, Range Data
+measurementSets = size(allData, 3);
+reformedMeasurements = nan(6, size(allData, 1),  measurementSets);
 
-initPosition = trueTrajectory{firstUsedDataPoint,:}*1000;
+for setIdx = 1:measurementSets
+    for timeStep = 1:size(allData, 1)
+        currentLocation = satPositionData(timeStep, :, setIdx);
+        currentLocation = currentLocation(1:3);
+        if timeStep == 1
+            tempData = allData(timeStep, 2:end, setIdx);
+            tempFixedPosition_m = calculate_vehicle_fixed_position(tempData(1), tempData(2), tempData(3), currentLocation);
+        else
+            currData = allData(timeStep, 2:end, setIdx);
+            currFixedPosition_m = calculate_vehicle_fixed_position(currData(1), currData(2), currData(3), currentLocation);
+            currFixedVelocity_m = (currFixedPosition_m - tempFixedPosition_m)/dt;
 
-[theta_lat, phi_lon, r_alt_m] = calculate_llr(initPosition(2:4));
-[v_speed, gamma, psi] = calculate_velocity_values(initPosition(2:end));
-X0 = [r_alt_m; theta_lat; phi_lon; v_speed; gamma; psi];
+            cartesianState = [currFixedPosition_m; currFixedVelocity_m];
 
-X_true = zeros(6, totalUsedDataPoints);
-X_pred = zeros(6, totalUsedDataPoints);
-
-X_true(:,1) = X0;
-X_pred(:,1) = X0;
-
-
-% Plot true trajectory
-figure();
-hold on;
-title("True vs Calculated Trajectory");
-predicted_steps = size(trueTrajectory, 1) - 1;
-use_predicition = true;
-
-for predIdx = firstUsedDataPoint+1:predicted_steps
-    shiftedIdx = predIdx - firstUsedDataPoint + 1;
-    % Recalculate true values
-    trueIdx = trueTrajectory{predIdx,:}*1000;
-    [theta_lat, phi_lon, r_alt_m] = calculate_llr(trueIdx(2:4));
-    [v_speed, gamma, psi] = calculate_velocity_values(trueIdx(2:end));
-    X_true(:, shiftedIdx) = [r_alt_m; theta_lat; phi_lon; v_speed; gamma; psi];
-
-    % Calculate predicted values
-    if use_predicition
-        X_prev = X_pred(:, shiftedIdx - 1);
-    else
-        X_prev = X_true(:, shiftedIdx);
+            reformedMeasurements(:, timeStep - 1, setIdx) = return_relevant_state_vector(cartesianState);
+            tempData = currData;
+        end
     end
-    rangeToEarth_m = X_prev(1);
-    currentVelocity_m_sec = X_prev(4);
-    dynamicPressure = calculate_dynamic_pressure(rangeToEarth_m, currentVelocity_m_sec);
-    accelerations = calculate_flight_accelerations(dynamicPressure, drag_coeff, lift_coeff, surface_area, mass);
+end
+disp("Redefined Data")
 
-    propagatedStep = propagate_state(X_prev, noise,...
-        accelerations, C_gamma, C_psi, dt);
-    X_pred(:, shiftedIdx) = propagatedStep;
 
+for timeStep = 1:size(hypersonicPositionData, 1)
+    cartesianState = hypersonicPositionData(timeStep, :);
+    x_true(:, timeStep) = return_relevant_state_vector(cartesianState);
+end
+disp("Redefined Data")
+
+%% Define System
+currSet = 1;
+nt = size(reformedMeasurements, 2);
+nx = 6;
+nz = 4;
+nu = 1;
+n = nx;
+
+q_scale = 100;
+Q = q_scale*[5.0 0.01 0.01 0.01;
+             0.01 5.0 0.01 0.01;
+             0.01 0.01 5.0 0.01;
+             0.01 0.01 0.01 5.0];
+
+Q = q_scale*diag([100, 1, 1, 100]);
+
+R_sigmas = [100, 0.1, 0.1, 100];
+R = diag(R_sigmas);
+
+H = [1 0 0 0 0 0; 
+     0 1 0 0 0 0;
+     0 0 1 0 0 0;
+     0 0 0 1 0 0]; % measure Range, Lat, Lon, and Velocity
+
+
+v = sqrtm(R)*randn(nz,nt);
+z = H*x_true+v;
+
+X0 = x_true(:, 1, currSet);
+P0_vals = [10000, 0.1, 0.1, 1000, 0.1, 0.1];
+P0 = diag(P0_vals);
+
+%IF Initial State
+Y0 = inv(P0);
+y0 = Y0*X0;
+yhatu = zeros(nx,nt); yhatu(:,1) = y0;
+Yu = zeros(nx,nx,nt); Yu(:,:,1) = Y0;
+
+% define physical state for plotting
+xinfo = zeros(nx, nt); xinfo(:,1) = X0;
+Pinfo=zeros(nx,nx,nt); Pinfo(:,:,1) = P0;
+
+% invert system matricies once for loop usage
+Qi = inv(Q); Ri = inv(R); sigma0 = 0;
+
+% msmt gating parameters
+Pgate = 0.95;alpha = 1-Pgate;
+Lam0  = chi2inv(Pgate, nz);
+
+%filter consistency parameters
+PF = 0.95;alpha = 1-PF;
+win=10;%time window
+Blow=chi2inv(alpha/2,10*nz)/win;  %low filter threshold
+Bhigh=chi2inv(1-alpha/2,10*nz)/win;  %high filter threshold
+Lam=zeros(nt,1)';
+LamF=zeros(nt,1)';
+NFrej=0; TFrej=[]; EFrej=[];
+Nrej=0;  Trej=[];  Erej=[];
+
+[f_sym, A_sym, B_sym, X, U, P] = hgv_dynamics_symbolic_no_coriolis();
+
+
+for k = 1:(nt-1)
+    % predict
+    currX = xinfo(:,k);
+    sigmak = 0;
+
+    A0 = double(subs(A_sym, [X; U; P], [currX; sigmak; params_vec]));
+    B0 = double(subs(B_sym, [X; U; P], [currX; sigmak; params_vec]));
+
+    F = diag((ones(1,6))) + A0*dt;
+    G = [dt 0 0 0;
+         0 dt 0 0;
+         0 0 dt 0;
+         0 0 0 dt;
+         0 0 0 0;
+         0 0 0 0];
+    
+    % G = [0 0 0 0;
+    %      0 0 0 0;
+    %      0 0 0 0;
+    %      0 dt 0 0;
+    %      0 0 dt 0;
+    %      0 0 0 dt];
+
+    Fi = inv(F);
+    Mi = Fi'*Yu(:,:,k)*Fi;
+    Om = Mi*G*inv(Qi + G'*Mi*G);
+    Yp(:,:,k+1) = (eye(nx) - Om*G')*Mi;
+    yhatp(:, k+1) = ((eye(nx) - Om*G')*Fi')*yhatu(:,k);
+
+
+    % innovation
+    % inn = (z(:, k+1) - H*yhatp(:, k+1));
+    % P1p = inv(Yp(:,:,k+1));
+    % S = H*P1p(1:n, 1:n)*H' + R;
+    % 
+    % Lam(1,k+1) = inn'*inv(S)*inn;
+    % 
+    % if Lam(1,k+1)>Lam0
+    %     Nrej = Nrej + 1;
+    %     Trej(length(Trej) + 1) = tvec(k+1);
+    %     Erej(:,size(Erej,2) + 1) = z(:,k+1)-H*x_true(:,k+1);
+    % end
+
+    % update
+    yhatu(:,k+1) = yhatp(:,k+1) + H'*Ri*z(:,k+1);
+    Yu(:,:,k+1) = Yp(:,:,k+1) + H'*Ri*H;
+
+    % if k>=win
+    %     LamF(1,k+1) = mean(Lam(k-win+2:k+1));
+    % end
+    % if (LamF(1,k+1) < Blow) | (LamF(k+1)>Bhigh)
+    %     NFrej = NFrej + 1;
+    %     TFrej(length(TFrej) + 1) = tvec(k+1);
+    %     EFrej(:,size(EFrej,2) + 1) = z(:,k+1)-H*x_true(:,k+1);
+    % end
+
+
+    % pull out state and covariance for plotting
+    Pinfo(:,:,k+1) = inv(Yu(:,:,k+1));
+    xinfo(:,k+1) = Pinfo(:,:,k+1)*yhatu(:,k+1);
+end
+disp("Filter Run")
+% Plot
+plot_estimator2(t,xinfo,Pinfo,x_true,z,[1 4], {"range (m)", "velocity (m/s)"});
+sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+
+plot_estimator2(t,xinfo,Pinfo,x_true,z,[2 3], {"latitude (rad)", "longitude (rad)"});
+sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+
+% plot_estimator2(t,xinfo,Pinfo,x_true,z,[5 6], {"gamma (red)", "psi (rad)"});
+% sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+disp("Data plotted");
+
+%% Plotting Filter Integrity
+if plot_integrity
+figs(figureCount)=figure('Position',[100 100 800 600]);
+plot(tvec,Lam,':','Color',MCcolors.mag);
+hold on;
+plot(tvec((win+1):end),LamF((win+1):end),'-','Color',MCcolors.purple);
+plot(tvec,Blow*ones(1,nk),'--','Color',MCcolors.blue);
+plot(tvec,Bhigh*ones(1,nk),'--','Color',MCcolors.blue);
+hold off;
+ylabel('filter integrity')
+xlabel('time \it{t} (sec)')
+title('(c) Kalman Filter integrity test statistic')
+legend('inn test statistic \lambda','KF test statistic \lambda_{10}^{KF}','lower bound','upper bound')
 end
 
-% Calculate Residuals
-residuals = X_true - X_pred;
-lat_residual_ratios = residuals
 
-
-% Plot data
-plot(X_true(3,:), X_true(2,:));
-plot(X_pred(3,:), X_pred(2,:));
-legend({'True', 'Predicted'})
 disp("Done!(?)");
+
+%% Plotting Colors
+function MAE6760startup(font_size);
+%
+% define colors for plotting
+global MCcolors; %define colors as global with access
+MCcolors.red=[200,0,0]/255;
+MCcolors.blue=[4,51,255]/255;
+MCcolors.purple=[147,23,255]/255;
+MCcolors.green=[0,160,0]/255;
+MCcolors.orange=[253,128,8]/255;
+MCcolors.mag=[255,64,255]/255;
+MCcolors.cyan=[0,230,255]/255;
+%
+% define standard figure positioning and size
+set(groot,'DefaultFigureUnits','pixels');
+set(groot,'DefaultFigurePosition',[100 100 1600 600]);
+set(groot,'DefaultFigureWindowStyle','normal');  % Important
+set(groot,'DefaultAxesFontSize',16);
+set(groot,'DefaultAxesFontWeight','bold');
+set(groot,'DefaultLineLineWidth',2);
+%
+end
 %% Define analysis functions
 % state vector X = [r, theta, phi, v, gamma, psi]
 % ALL ANGLES IN DEGREES
@@ -92,19 +262,19 @@ r = range;
 
 currentLocation = currentLocation(:);
 relCartesian = [r*cosd(th)*cosd(phi);...
-    r*cosd(th)*cosd(phi);...
-    r*sind(th0)];
+    r*cosd(th)*sind(phi);...
+    r*sind(th)];
 
 vehicleFixedPosition_m = (currentLocation + relCartesian);
 end
 
 function [theta_lat, phi_lon, r_m] = calculate_llr(fixedPosition_m)
 earth_radius_m = 6371.8*1000;
-lla = ecef2lla(fixedPosition_m);
+lla = ecef2lla(fixedPosition_m(:)');
 
 theta_lat = lla(1);   % degrees
 phi_lon = lla(2);   % degrees
-r_m = (lla(3) + earth_radius_m);   % km
+r_m = (lla(3) + earth_radius_m);   % m
 end
 
 function [v_speed, gamma, psi] = calculate_velocity_values(fixedState)
@@ -121,7 +291,7 @@ gamma = rad2deg(gamma_rad);
 [theta_lat, phi_lon, ~] = calculate_llr(r_m);
 rotation_matrix = return_conversion_from_ECEF_to_NED(deg2rad(theta_lat), deg2rad(phi_lon));
 
-v_ned = rotation_matrix * v';
+v_ned = rotation_matrix * v(:);
 
 v_north = v_ned(1);
 v_east  = v_ned(2);
@@ -129,52 +299,113 @@ v_east  = v_ned(2);
 heading = atan2(v_east, v_north); % radians
 psi = mod(rad2deg(heading), 360);
 
+psi = deg2rad(psi);
+gamma = deg2rad(gamma);
+
 v_speed = v_norm;
 
 end
 
+function hypersonicStateVector = return_relevant_state_vector(cartesianStateVector)
 
-% Functions to calculate propogation values
-function dynamicPressure = calculate_dynamic_pressure(rangeToEarth_m, v)
-rho_0 = 1.225; %kg/m^3
-earth_radius_m = 6371.8*1000;
-h_m = (rangeToEarth_m - earth_radius_m);
-hs_m = 6700;
-rho = rho_0.*exp(-h_m/hs_m);
+currFixedPosition_m = cartesianStateVector(1:3);
+[theta_lat, phi_lon, r_m] = calculate_llr(currFixedPosition_m);
+[v_speed, gamma, psi] = calculate_velocity_values(cartesianStateVector);
 
-dynamicPressure = rho.*(v.*v)/2;
+hypersonicStateVector = [r_m; deg2rad(theta_lat); deg2rad(phi_lon); v_speed; gamma; psi];
+
 end
 
-function accelerations = calculate_flight_accelerations(dynamicPressure, drag_coeff, lift_coeff, surface_area, mass)
-accelerations = [dynamicPressure.*drag_coeff.*surface_area./mass;
-    dynamicPressure.*lift_coeff.*surface_area./mass];
+function [f_sym, A_sym, B_sym, X, U, P] = hgv_dynamics_symbolic_no_coriolis()
+%HGV_DYNAMICS_SYMBOLIC_NO_CORIOLIS
+% Symbolic 3-DOF spherical-Earth HGV equations of motion without Coriolis.
+%
+% State:
+%   X = [r; lambda; phi; v; gamma; psi]
+%
+% Control:
+%   U = sigma
+%
+% Parameters:
+%   P = [Re; mu; rho0; hs; S; m; CL; CD]
+
+    syms r lambda_sym phi_sym v gamma_sym psi_sym real
+    syms sigma_sym real
+    syms Re mu rho0 hs S m CL CD real
+
+    X = [
+        r;
+        lambda_sym;
+        phi_sym;
+        v;
+        gamma_sym;
+        psi_sym
+    ];
+
+    U = sigma_sym;
+
+    P = [
+        Re;
+        mu;
+        rho0;
+        hs;
+        S;
+        m;
+        CL;
+        CD
+    ];
+
+    % Altitude
+    h = r - Re;
+
+    % Atmosphere
+    rho = rho0 * exp(-h / hs);
+
+    % Dynamic pressure
+    qbar = sym(1/2) * rho * v^2;
+
+    % Gravity
+    g = mu / r^2;
+
+    % Aerodynamic accelerations
+    D = qbar * CD * S / m;
+    L = qbar * CL * S / m;
+
+    % Equations of motion
+    f_sym = sym(zeros(6,1));
+
+    f_sym(1) = v * sin(gamma_sym);
+
+    f_sym(2) = (v * cos(gamma_sym) * sin(psi_sym)) / (r * cos(phi_sym));
+
+    f_sym(3) = (v * cos(gamma_sym) * cos(psi_sym)) / r;
+
+    f_sym(4) = -D - g * sin(gamma_sym);
+
+    f_sym(5) = (1/v) * ( ...
+                 L * cos(sigma_sym) ...
+               + ((v^2 / r) - g) * cos(gamma_sym));
+
+    f_sym(6) = (1/v) * ( ...
+                 (L * sin(sigma_sym)) / cos(gamma_sym) ...
+               + (v^2 / r) * cos(gamma_sym) * sin(psi_sym) * tan(phi_sym));
+
+    % Continuous-time linearization
+    A_sym = simplify(jacobian(f_sym, X));
+    B_sym = simplify(jacobian(f_sym, U));
 end
 
-% Propogation Functions
-function Xk = propagate_state(Xk, noise, accelerations, C_gamma, C_psi, dt)
-sigma_deg = 35;
-g = 9.81; 
-r = Xk(1,:);
-th = Xk(2,:);
-phi = Xk(3,:);
-v = Xk(4,:);
-gamma = Xk(5,:);
-psi = Xk(6,:);
-
-drag = accelerations(1,:);
-lift = accelerations(2,:);
-
-r_dot = v.*sind(gamma);
-th_dot = v.*cosd(gamma).*sind(psi)./r./cosd(phi);
-phi_dot = v.*cosd(gamma).*cosd(psi)./r;
-v_dot = -drag - g.*sind(gamma);
-gamma_dot = (1./v).*(lift.*cosd(sigma_deg) +  (((v.*v)./r) - g).*cosd(gamma)) + C_gamma;
-psi_dot = (1./v).*((lift.*sind(sigma_deg)./cosd(gamma)) +  ((v.*v)./r).*cosd(gamma).*sind(psi).*tand(phi)) + C_psi;
-
-Xk = Xk + dt*[r_dot;
-    th_dot;
-    phi_dot;
-    v_dot;
-    gamma_dot;
-    psi_dot];
+function plot_estimator2(t,xhat,Phat,x_true,z,ii, names);
+%
+figure('Position',[100 100 1600 600]);
+tiledlayout(1,2,'TileSpacing','compact','Padding','tight');
+nexttile;
+plot_estimator(t,xhat(ii(1),:),Phat(ii(1),ii(1),:),x_true(ii(1),:),'error',z(1,:))
+ylabel(string(names(1)));
+axis([0 10 -2 2]);
+nexttile;
+plot_estimator(t,xhat(ii(2),:),Phat(ii(2),ii(2),:),x_true(ii(2),:),'error',z(2,:))
+ylabel(string(names(2)));
+axis([0 10 -2 2]);
+%
 end

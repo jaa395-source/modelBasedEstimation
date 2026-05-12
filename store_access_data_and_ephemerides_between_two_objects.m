@@ -4,14 +4,15 @@ satelliteName = "Satellite1";
 ephemerisFolder = pwd; % defaults to store files in folder where script is run
 dataTimeStep_sec = 1;
 
-%% Connect to STK
+% Connect to STK
 app = actxGetRunningServer('STK.Application');
 root = app.Personality2;
 scenario = root.CurrentScenario;
 root.UnitPreferences.SetCurrentUnit("DateFormat", "EpSec");
+root.UnitPreferences.SetCurrentUnit("Distance", "m");
 
 %% Load in hypersonic platform
-hypersonicEphemerisFile = pwd + "\HXRV_X43_ECEF.e";
+hypersonicEphemerisFile = pwd + "\HXRV_X43_parsed_data_ECEF.e";
 hypersonicName = "HXRV_X43";
 hypersonicObjectType = "Aircraft"; % Alternative is "Missile";
 obj_enumeration = char("e" + hypersonicObjectType);
@@ -36,7 +37,7 @@ else
 end
 
 access_constraint.EnableMin = 1;
-access_constraint.Min = 1437;
+access_constraint.Min = 420;
 disp("Defined Hypersonic Vehicle");
 
 %% Get handle for Satellite and Hypersonic
@@ -44,6 +45,7 @@ satCount = scenario.Children.GetElements('eSatellite').Count;
 allData = [];
 accessCount = 1;
 satNames = {};
+currFrame = "Fixed";
 
 for satIdx = 1:satCount
     sat = scenario.Children.GetElements('eSatellite').Item(int32(satIdx - 1));
@@ -73,6 +75,19 @@ for satIdx = 1:satCount
             azimuths(n+1:n+dataN) = azimuthValues;
             elevations(n+1:n+dataN) = elevationValues;
             ranges(n+1:n+dataN) = rangeValues;
+
+            posDP = sat.DataProviders.Item("Cartesian Position").Group.Item(currFrame).Exec(times(1), times(end), dataTimeStep_sec);
+            velDP = sat.DataProviders.Item("Cartesian Velocity").Group.Item(currFrame).Exec(times(1), times(end), dataTimeStep_sec);
+
+            posx = cell2mat(posDP.DataSets.GetDataSetByName("x").GetValues);
+            posy = cell2mat(posDP.DataSets.GetDataSetByName("y").GetValues);
+            posz = cell2mat(posDP.DataSets.GetDataSetByName("z").GetValues);
+
+            velx = cell2mat(velDP.DataSets.GetDataSetByName("x").GetValues);
+            vely = cell2mat(velDP.DataSets.GetDataSetByName("y").GetValues);
+            velz = cell2mat(velDP.DataSets.GetDataSetByName("z").GetValues);
+
+            satPositionData(:,:,accessCount) = [posx, posy, posz, velx, vely, velz];
         end
 
         if aerDP.Intervals.Count > 0
@@ -85,8 +100,8 @@ end
 disp("Stored AER Data...");
 
 %% Store Satellite and Hypersonic Vehicle Ephemerides
-frames = ["J2000", "Fixed", "ICRF"];
-platforms = {sat, hypersonic};
+frames = ["Fixed"];
+platforms = {hypersonic};
 
 for platIdx = 1:length(platforms)
     currPlat = platforms{platIdx};
@@ -105,9 +120,9 @@ for platIdx = 1:length(platforms)
         vely = cell2mat(velDP.DataSets.GetDataSetByName("y").GetValues);
         velz = cell2mat(velDP.DataSets.GetDataSetByName("z").GetValues);
 
-        dataTable = table(posx, posy, posz, velx, vely, velz);
-        writetable(dataTable, accessFileName);
+        hypersonicPositionData(:,:,1) = [posx, posy, posz, velx, vely, velz];
         disp("Stored ephemerides for " + currPlat.InstanceName + " in " + currFrame + " frame");
     end
 end
 
+save('measurement_data.mat', 'allData', 'satPositionData', 'hypersonicPositionData');

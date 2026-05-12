@@ -1,0 +1,129 @@
+%% Descriptions
+% measurements - azimuth, elevation, range, speed
+% z = 4x1
+% x = 6x1
+clear all; close all; clc;
+rng(10);
+%% Load in Functions
+addpath("finalProjectFunctions\");
+
+%% Load in true state and define parameters
+load('measurement_data.mat');
+tvec = (1:1:size(hypersonicPositionData, 1));
+nt = length(tvec);
+plot_integrity = false;
+
+params.Re = 6371.1*1000;
+params.hs = 6700;
+params.rho0 = 1.225;
+params.CD= 0.015;
+params.CL = 0.085;
+params.S = 3.99;
+params.m = 1400.0;
+params.mu = 3.99e14;
+params.Cgamma = 0;
+params.Cpsi = 0;
+params.omegaE = 7.2921159e-5;   % Earth rotation rate, rad/s
+noise  = 0;
+dt = 0.99;
+
+params_vec = [
+    6371.1e3;
+    3.986004418e14;
+    1.225;
+    6700;
+    3.99;
+    1400;
+    0.085;
+    0.015
+];
+disp("Defined Parameters");
+
+%% Prepare data for analysis
+measurementSet = 1;
+for timeStep = 1:nt
+    cartesianState = hypersonicPositionData(timeStep, :);
+    x_true(:, timeStep) = return_relevant_state_vector(cartesianState);
+end
+disp("Generated simulated state");
+
+z_clean = x_true;
+nz = 4;
+H = [1 0 0 0 0 0 0 0;
+     0 1 0 0 0 0 0 0;
+     0 0 1 0 0 0 0 0;
+     0 0 0 1 0 0 0 0];
+H = [H zeros(4,2)];
+
+q_scale = 100;
+Q = q_scale*diag([50, 50 0.1 0.1]);
+
+R_sigmas = [1000, 0.5, 0.5, 100];
+R = diag(R_sigmas);
+
+v = sqrtm(R)*randn(nz,nt);
+long_bias = 7.29e-5;
+lat_bias = 0.005;
+
+x_true=[x_true;long_bias*ones(1,nt);lat_bias*ones(1,nt)];
+z = (x_true(1:4,:)) + v;
+
+nw = 4;
+w = sqrtm(Q)*randn(nw,nt);
+drag_values = w(1,:);
+lift_values = w(2,:);
+long_bias_values = w(3,:);
+lat_bias_values = w(4,:);
+[f_sym, A_sym, B_sym, X, U, P] = hgv_dynamics();
+
+%% Define relevant values
+nk = size(x_true,2);
+nx = 6;
+nz = 4;
+nw = 2;
+
+P0_vals = [];
+for i = 1:nx
+    P0_vals(i) = cov(x_true(i,:));
+end
+
+P0 = diag([P0_vals, 0.5, 0.5]);
+nx=nx+2;
+
+x0 = [x_true(:,1)];
+xhatp = zeros(nx,nk);xhatp(:,1) = x0;
+xhatu = zeros(nx,nk);xhatu(:,1) = x0;
+Pp = zeros(nx,nx,nk);Pp(:,:,1) = P0;
+Pu = zeros(nx,nx,nk);Pu(:,:,1) = P0;
+n = nk;
+
+
+for k=1:(nk-1)
+    % predict
+    currX = xhatu(:,k);
+    sigmak = 0;
+    uk = [drag_values(k); lift_values(k); long_bias_values(k); lat_bias_values(k)];
+    A0 = double(subs(A_sym, [X; U; P], [currX; uk; params_vec]));
+    B0 = double(subs(B_sym, [X; U; P], [currX; uk; params_vec]));
+
+    [F,G]=c2d(A0,B0,dt);
+
+    xhatp(:,k+1) = F*currX + G*uk;
+    Pp(:, :, k+1) = F*Pu(:,:,k)*F' + G*Q*G';
+
+    % Kalman gain
+    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+
+    % Update
+    xhatu(:,k+1) = xhatp(:,k+1) + K*(z(:,k+1) - H*xhatp(:,k+1));
+    Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*R*K';
+end
+
+%% Plot
+axis_lims = [0 400 -200 200];
+plot_estimator2(tvec,xhatu,Pu,x_true,z,[1 4], {"range (m)", "velocity (m/s)"}, axis_lims);
+sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
+
+axis_lims = [0 400 -2 2];
+plot_estimator2(tvec,xhatu,Pu,x_true,z,[2 3], {"longitude (rad)", "latitude (rad)"}, axis_lims);
+sgtitle('Information Filter (1 msmt)','FontWeight','bold','Fontsize',16);
