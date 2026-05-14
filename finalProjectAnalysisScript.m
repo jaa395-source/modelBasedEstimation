@@ -353,7 +353,7 @@ nexttile;
 ix = 3;
 axis_lims = [0 440 -0.7 0.7];
 plot_estimator(tvec,xinfo_many(ix,:),Pinfo_many(ix,ix,:),x_true(ix,:),'error',z(ix,:));
-ylabel('longitude error estimate (rad)');
+ylabel('latitude error estimate (rad)');
 axis(axis_lims);
 hold on
 %uncomment the line below to add msmt rejections to the plot
