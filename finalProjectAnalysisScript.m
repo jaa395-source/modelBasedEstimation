@@ -90,6 +90,9 @@ for i = 1:nx
 end
 
 P0 = diag([P0_vals, 0.5, 0.5]);
+P_sats = diag([10^2; 0.01^2; 0.01^2; 1^2]);
+Hobs = diag([1 1 1 1]);
+Reff = R + Hobs*P_sats*Hobs';
 nx=nx+2;
 
 % Kalman
@@ -113,7 +116,7 @@ xinfo = zeros(nx, nk); xinfo(:,1) = x0;
 Pinfo=zeros(nx,nx,nk); Pinfo(:,:,1) = P0;
 
 % invert system matricies once for loop usage
-Qi = inv(Q); Ri = inv(R);
+Qi = inv(Q); Ri = inv(Reff);
 
 % msmt gating parameters
 Pgate = 0.95;alpha = 1-Pgate;
@@ -142,13 +145,16 @@ for k=1:(nk-1)
 
     xhatp(:,k+1) = F*currX + G*uk;
     Pp(:, :, k+1) = F*Pu(:,:,k)*F' + G*Q*G';
+    
 
     % Kalman gain
-    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+    %K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + R);
+    K = Pp(:,:,k+1)*H'*inv(H*Pp(:,:,k+1)*H' + Reff);
 
     % Kalman Update
     xhatu(:,k+1) = xhatp(:,k+1) + K*(z(:,k+1) - H*xhatp(:,k+1));
-    Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*R*K';
+    %Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*R*K';
+    Pu(:,:,k+1) = (eye(nx) - K*H)*Pp(:,:,k+1)*(eye(nx) - K*H)' + K*Reff*K';
 
     % Information predict
     Fi = inv(F);
@@ -235,7 +241,8 @@ xinfo_many = zeros(nx, nk); xinfo_many(:,1) = x0;
 Pinfo_many=zeros(nx,nx,nk); Pinfo_many(:,:,1) = P0;
 
 % invert system matricies once for loop usage
-Qi = inv(Q); Ri = inv(R);
+Qi = inv(Q); %Ri = inv(Reff);
+Ri = inv(R);
 
 % msmt gating parameters
 Pgate = 0.95;alpha = 1-Pgate;
@@ -368,7 +375,7 @@ disp(Nrej/nk*100)
 %uncomment lines below to output the percent of time filter is inconsistent
 disp('(c) percent of time filter is inconsistent:');
 disp(NFrej/nk*100)
-%%
+
 figNum = 3;
 figs(figNum)=figure('Position',[100 100 800 600]);
 plot(tvec,Lam,':','Color', MCcolors.mag);
